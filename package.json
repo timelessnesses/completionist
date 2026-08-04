@@ -39,5 +39,10 @@
 		"typescript": "^6.0.3",
 		"vite": "^8.0.16",
 		"wrangler": "^4.114.0"
+	},
+	"dependencies": {
+		"jose": "^6.2.7",
+		"resend": "^6.18.1",
+		"web-push": "^3.6.7"
 	}
 }
