@@ -1,4 +1,5 @@
 import { integer, primaryKey, sqliteTable, text, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { start } from 'repl';
 
 export const task = sqliteTable('task', {
 	id: text('id')
@@ -12,6 +13,11 @@ export const task = sqliteTable('task', {
 	created_at: integer('created_at', { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 	end_at: integer('end_at', { mode: "timestamp_ms" }).notNull(),
 	status: text('status').notNull().$type<"todo" | "progress" | "completed" | "cancelled">(),
+	start_at: integer('start_at', { mode: "timestamp_ms" }).notNull(),
+	// bruv
+	all_day: integer('all_day').notNull().$type<0 | 1>(),
+	// higher importance_value means higher importance
+	importance_value: integer('importance_value').notNull(),
 });
 
 export const user = sqliteTable('user', {
@@ -24,6 +30,7 @@ export const user = sqliteTable('user', {
 	logged_in_when: integer('logged_in_when', { mode: "timestamp_ms"}),
 	jwt_expires_at: integer('jwt_expires_at', { mode: "timestamp_ms" }),
 	profile_picture_url: text('profile_picture_url'),
+	refresh_token: text('refresh_token'),
 });
 
 export const task_assignee = sqliteTable('task_assignee', {
@@ -31,7 +38,7 @@ export const task_assignee = sqliteTable('task_assignee', {
 	user_id: text('user_id').references((): AnySQLiteColumn => user.id).notNull(),
 	created_at: integer('created_at', { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 }, (table) => {
-	return [primaryKey(table.task_id, table.user_id)];
+	return [primaryKey({ columns: [table.task_id, table.user_id] })];
 });
 
 export const task_dependency = sqliteTable('task_dependency', {
@@ -39,7 +46,7 @@ export const task_dependency = sqliteTable('task_dependency', {
 	dependency_id: text('dependency_id').references((): AnySQLiteColumn => task.id).notNull(),
 	created_at: integer('created_at', { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
 }, (table) => {
-	return [primaryKey(table.task_id, table.dependency_id)];
+	return [primaryKey({ columns: [table.task_id, table.dependency_id] })];
 });
 
 export const task_comment = sqliteTable('task_comment', {

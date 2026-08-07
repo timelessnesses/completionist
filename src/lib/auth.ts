@@ -1,17 +1,23 @@
 import * as jose from 'jose';
 import { env as envPrivate } from '$env/dynamic/private';
 
+export type UserJWT = {
+    name: string;
+    nickname: string;
+    role: 'user' | 'admin';
+    refresh_token: string;
+}
+
 export async function verifyJWT(
 	token: string,
 	env: Env
 ): Promise<{ email: string; name: string; nickname: string; admin: boolean }> {
-    const secret = env.SharedSecrets as SecretsStoreSecret;
-	const secretValue = await secret.get();
-	if (!secretValue) {
+    const secret = env.JWT_SECRET_BASE64
+	if (!secret) {
 		throw new Error('Shared secret is not set in environment variables.');
 	}
 
-	const { payload } = await jose.jwtVerify<StudentJWT>(token, turnThisToUint8Array(secretValue), {
+	const { payload } = await jose.jwtVerify<UserJWT>(token, turnThisToUint8Array(secret), {
 		algorithms: ['HS256']
 	});
 
