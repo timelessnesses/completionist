@@ -2,32 +2,32 @@
 // for information about these interfaces
 declare global {
 	namespace App {
-        interface Platform {
-            env: Env;
-            cf: CfProperties;
-            ctx: ExecutionContext;
-        }
+		interface Platform {
+			env: Env;
+			cf: CfProperties;
+			ctx: ExecutionContext;
+		}
 
-        interface Platform {
+		interface Platform {
 			env: Env;
 			ctx: ExecutionContext;
 			caches: CacheStorage;
 			cf?: IncomingRequestCfProperties;
 		}
 
-        // interface Error {}
-        interface Locals {
-            user: {
-                email: string;
-                user_id: string;
-                name: string;
-                nickname: string;
-                admin: boolean;
-            }
-        }
-        // interface PageData {}
-        // interface PageState {}
-    }
+		// interface Error {}
+		interface Locals {
+			user: {
+				email: string;
+				user_id: string;
+				name: string;
+				nickname: string;
+				admin: boolean;
+			} | undefined;
+		}
+		// interface PageData {}
+		// interface PageState {}
+	}
 }
 
 export {};

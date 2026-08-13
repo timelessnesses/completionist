@@ -2,17 +2,18 @@ import * as jose from 'jose';
 import { env as envPrivate } from '$env/dynamic/private';
 
 export type UserJWT = {
-    name: string;
-    nickname: string;
-    role: 'user' | 'admin';
-    refresh_token: string;
-}
+	name: string;
+	nickname: string;
+	role: 'user' | 'admin';
+	refresh_token: string;
+	user_id: string;
+};
 
 export async function verifyJWT(
 	token: string,
 	env: Env
-): Promise<{ email: string; name: string; nickname: string; admin: boolean }> {
-    const secret = env.JWT_SECRET_BASE64
+): Promise<{ email: string; name: string; nickname: string; admin: boolean; user_id: string }> {
+	const secret = env.JWT_SECRET_BASE64;
 	if (!secret) {
 		throw new Error('Shared secret is not set in environment variables.');
 	}
@@ -33,7 +34,8 @@ export async function verifyJWT(
 		email: payload.sub as string,
 		name: payload.name,
 		nickname: payload.nickname,
-		admin: payload.role === 'admin'
+		admin: payload.role === 'admin',
+		user_id: payload.user_id
 	};
 }
 function turnThisToUint8Array(secret: string): Uint8Array {
