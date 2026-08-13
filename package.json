@@ -7,7 +7,7 @@
 		"dev": "vite dev",
 		"build": "wrangler types --check && vite build",
 		"preview": "pnpm run build && wrangler dev",
-		"prepare": "svelte-kit sync || echo ''",
+		"prepare": "svelte-kit sync || echo '' && npm run smui-theme-light && npm run smui-theme-dark",
 		"check": "wrangler types --check && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check .",
@@ -19,9 +19,12 @@
 		"db:studio": "drizzle-kit studio",
 		"deploy": "pnpm run build && wrangler deploy",
 		"cf-typegen": "wrangler types ./src/worker-configuration.d.ts",
-		"secret-generator": "openssl rand -base64 32"
+		"secret-generator": "openssl rand -base64 32",
+		"smui-theme-light": "smui-theme compile static/smui.css -i src/theme",
+		"smui-theme-dark": "smui-theme compile static/smui-dark.css -i src/theme/dark"
 	},
 	"devDependencies": {
+		"@mdi/js": "^7.4.47",
 		"@sveltejs/adapter-cloudflare": "^7.2.9",
 		"@sveltejs/kit": "^2.63.0",
 		"@sveltejs/vite-plugin-svelte": "^7.1.2",
@@ -34,6 +37,7 @@
 		"prettier": "^3.8.3",
 		"prettier-plugin-svelte": "^4.1.0",
 		"prettier-plugin-tailwindcss": "^0.8.0",
+		"smui-theme": "^9.0.3",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
 		"tailwindcss": "^4.3.0",
@@ -44,6 +48,7 @@
 	"dependencies": {
 		"jose": "^6.2.7",
 		"resend": "^6.18.1",
+		"set-cookie-parser": "^3.1.2",
 		"web-push": "^3.6.7"
 	}
 }

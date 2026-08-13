@@ -21,12 +21,19 @@
 	"upload_source_maps": true,
 	"d1_databases": [
 		{
-			"binding": "completionist_db",
+			"binding": "COMPLETIONIST_DB",
 			"database_name": "completionist-db",
 			"database_id": "9b6df646-5fa3-4ee4-a613-3649bf4826a2",
 			"remote": true
 		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "COMPLETIONIST_KV",
+			"id": "3b44dbe7a453453da6b89cce18596dae"
+		}
 	]
+
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
