@@ -5,7 +5,7 @@ import {
 	text,
 	type AnySQLiteColumn
 } from 'drizzle-orm/sqlite-core';
-import { start } from 'repl';
+import { access } from 'fs';
 
 export const task = sqliteTable('task', {
 	id: text('id')
@@ -40,7 +40,7 @@ export const user = sqliteTable('user', {
 	logged_in_when: integer('logged_in_when', { mode: 'timestamp_ms' }),
 	jwt_expires_at: integer('jwt_expires_at', { mode: 'timestamp_ms' }),
 	profile_picture_url: text('profile_picture_url'),
-	refresh_token: text('refresh_token')
+	// refresh_token: text('refresh_token')
 });
 
 export const task_assignee = sqliteTable(
@@ -203,3 +203,13 @@ export const issue_attachments = sqliteTable('issue_attachments', {
 		.notNull()
 		.$defaultFn(() => new Date())
 });
+
+// export const google_calendar_tokens = sqliteTable('google_calendar_tokens', {
+// 	access_token: text('access_token').notNull(),
+// 	refresh_token: text('refresh_token').notNull(),
+// 	user: text('user')
+// 		.references((): AnySQLiteColumn => user.id)
+// 		.notNull()
+// 		.primaryKey(),
+// 	expires_at: integer('expires_at', { mode: 'timestamp_ms' }).notNull()
+// });

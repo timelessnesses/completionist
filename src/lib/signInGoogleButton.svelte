@@ -69,3 +69,6 @@
 {:else}
 	<div id="google-button"></div>
 {/if}
+<svelte:head>
+	<script src="https://accounts.google.com/gsi/client" defer async id="GSIWaiting"></script>
+</svelte:head>

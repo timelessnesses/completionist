@@ -1,5 +1,5 @@
 <script lang="ts">
-	import '$lib/index.css';
+	import '$lib/assets/index.css';
 
 	const builtAt = new Date(__BUILD_DATE).toLocaleString('en-TH', {
 		dateStyle: 'medium',
@@ -28,7 +28,7 @@
 			<p class="text-right">
 				<span>Git commit </span>
 				<a
-					href={`https://github.com/timelessnesses/accountery/commit/${__GIT_COMMIT}`}
+					href={`https://github.com/timelessnesses/completionist/commit/${__GIT_COMMIT}`}
 					target="_blank"
 					rel="noreferrer"
 					class="font-medium text-foreground underline decoration-border underline-offset-2 hover:text-primary"

@@ -46,6 +46,7 @@
 		"wrangler": "^4.114.0"
 	},
 	"dependencies": {
+		"google-auth-library": "^11.0.2",
 		"jose": "^6.2.7",
 		"resend": "^6.18.1",
 		"set-cookie-parser": "^3.1.2",

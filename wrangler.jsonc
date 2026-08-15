@@ -24,6 +24,7 @@
 			"binding": "COMPLETIONIST_DB",
 			"database_name": "completionist-db",
 			"database_id": "9b6df646-5fa3-4ee4-a613-3649bf4826a2",
+			"migrations_dir": "drizzle",
 			"remote": true
 		}
 	],
