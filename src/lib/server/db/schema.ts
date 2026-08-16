@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { customType } from 'drizzle-orm/gel-core';
+import { customType } from 'drizzle-orm/sqlite-core';
 import {
 	integer,
 	primaryKey,
@@ -14,14 +14,34 @@ export type Color = {
 	b: number;
 }
 
-const colorHexType = customType({
+const colorHexType = customType<{
+	data: Color;
+	driverData: string;
+}>({
 	dataType() {
-		return 'TEXT';
+		return 'text';
 	},
-	fromDriver(value: unknown): Color { 
+	fromDriver(value: string): Color { 
 		if (typeof value === 'string') {
-			
+			const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(value);
+			if (result) {
+				return {
+					r: parseInt(result[1], 16),
+					g: parseInt(result[2], 16),
+					b: parseInt(result[3], 16)
+				};
+			}
 		}
+		throw new Error(`Invalid color hex string: ${value}`);
+	},
+	toDriver(value: Color): string { 
+		if (typeof value === 'object' && value !== null && 'r' in value && 'g' in value && 'b' in value) {
+			if (typeof value.r !== 'number' || typeof value.g !== 'number' || typeof value.b !== 'number') {
+				throw new Error(`Invalid color object: ${value}`);
+			}
+			return `#${numberToHex(value.r)}${numberToHex(value.g)}${numberToHex(value.b)}`;
+		}
+		throw new Error(`Invalid color object: ${value}`);
 	}
 });
 
@@ -36,8 +56,8 @@ export const task = sqliteTable('task', {
 		.$defaultFn(() => crypto.randomUUID()),
 	parent: text('parent').references((): AnySQLiteColumn => task.id),
 	task_name: text('name').notNull(),
-	description: text('description'),
-	color: text('color').notNull(),
+	description: text('description'),	
+	color: colorHexType('color').notNull(),
 	owner: text('owner')
 		.references((): AnySQLiteColumn => user.id)
 		.notNull(),
@@ -58,8 +78,6 @@ export const user = sqliteTable('user', {
 		.primaryKey()
 		.$defaultFn(() => crypto.randomUUID()),
 	name: text('name').notNull(),
-	// please treat it as unix timestamp in milliseconds, not seconds
-	// pass it to new
 	logged_in_when: integer('logged_in_when', { mode: 'timestamp_ms' }),
 	jwt_expires_at: integer('jwt_expires_at', { mode: 'timestamp_ms' }),
 	profile_picture_url: text('profile_picture_url'),
@@ -222,7 +240,8 @@ export const task_tag = sqliteTable('task_tags', {
 	tag: text('tag').notNull(),
 	created_at: integer('created_at', { mode: 'timestamp_ms' })
 		.notNull()
-		.$defaultFn(() => new Date())
+		.$defaultFn(() => new Date()),
+	color: colorHexType('color').notNull()
 });
 
 export const task_assigned_tags = sqliteTable(
