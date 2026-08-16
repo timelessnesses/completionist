@@ -24,9 +24,96 @@ importers:
         specifier: ^3.6.7
         version: 3.6.7
     devDependencies:
+      '@material/animation':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/button':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/card':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/chips':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/circular-progress':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/dom':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/elevation':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/feature-targeting':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/icon-button':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/list':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/ripple':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/rtl':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/shape':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/theme':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/top-app-bar':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/touch-target':
+        specifier: ^14.0.0
+        version: 14.0.0
+      '@material/typography':
+        specifier: ^14.0.0
+        version: 14.0.0
       '@mdi/js':
         specifier: ^7.4.47
         version: 7.4.47
+      '@smui/button':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/card':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/chips':
+        specifier: ^9.0.3
+        version: 9.0.3
+      '@smui/circular-progress':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/icon-button':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/list':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/menu':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/menu-surface':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/paper':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/ripple':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/tooltip':
+        specifier: ^9.0.2
+        version: 9.0.2
+      '@smui/top-app-bar':
+        specifier: ^9.0.2
+        version: 9.0.2
       '@sveltejs/adapter-cloudflare':
         specifier: ^7.2.9
         version: 7.2.9(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.7)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)))(svelte@5.56.7)(typescript@6.0.3)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)))(wrangler@4.114.0)
@@ -785,6 +872,75 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
+  '@material/animation@14.0.0':
+    resolution: {integrity: sha512-VlYSfUaIj/BBVtRZI8Gv0VvzikFf+XgK0Zdgsok5c1v5DDnNz5tpB8mnGrveWz0rHbp1X4+CWLKrTwNmjrw3Xw==}
+
+  '@material/base@14.0.0':
+    resolution: {integrity: sha512-Ou7vS7n1H4Y10MUZyYAbt6H0t67c6urxoCgeVT7M38aQlaNUwFMODp7KT/myjYz2YULfhu3PtfSV3Sltgac9mA==}
+
+  '@material/button@14.0.0':
+    resolution: {integrity: sha512-dqqHaJq0peyXBZupFzCjmvScrfljyVU66ZCS3oldsaaj5iz8sn33I/45Z4zPzdR5F5z8ExToHkRcXhakj1UEAA==}
+
+  '@material/card@14.0.0':
+    resolution: {integrity: sha512-SnpYWUrCb92meGYLXV7qa/k40gnHR6rPki6A1wz0OAyG2twY48f0HLscAqxBLvbbm1LuRaqjz0RLKGH3VzxZHw==}
+
+  '@material/checkbox@14.0.0':
+    resolution: {integrity: sha512-OoqwysCqvj1d0cRmEwVWPvg5OqYAiCFpE6Wng6me/Cahfe4xgRxSPa37WWqsClw20W7PG/5RrYRCBtc6bUUUZA==}
+
+  '@material/chips@14.0.0':
+    resolution: {integrity: sha512-SfZX/Ovdq4NgjdtIr/N1O3fEHisZC+t8G8629OV/NrniSS6rKOa+q1mImzna8R4pfuYO+7nT5nZewQpL/JSYaQ==}
+
+  '@material/circular-progress@14.0.0':
+    resolution: {integrity: sha512-7EdkP6ty54g6qs6zzlsw29vWlUyrcSWr9b4pGGx4D/iNJww+eyxXZ07iWoNOr4uLgguauWEft2axpQiFCwFD0g==}
+
+  '@material/density@14.0.0':
+    resolution: {integrity: sha512-NlxXBV5XjNsKd8UXF4K/+fOXLxoFNecKbsaQO6O2u+iG8QBfFreKRmkhEBb2hPPwC3w8nrODwXX0lHV+toICQw==}
+
+  '@material/dom@14.0.0':
+    resolution: {integrity: sha512-8t88XyacclTj8qsIw9q0vEj4PI2KVncLoIsIMzwuMx49P2FZg6TsLjor262MI3Qs00UWAifuLMrhnOnfyrbe7Q==}
+
+  '@material/elevation@14.0.0':
+    resolution: {integrity: sha512-Di3tkxTpXwvf1GJUmaC8rd+zVh5dB2SWMBGagL4+kT8UmjSISif/OPRGuGnXs3QhF6nmEjkdC0ijdZLcYQkepw==}
+
+  '@material/feature-targeting@14.0.0':
+    resolution: {integrity: sha512-a5WGgHEq5lJeeNL5yevtgoZjBjXWy6+klfVWQEh8oyix/rMJygGgO7gEc52uv8fB8uAIoYEB3iBMOv8jRq8FeA==}
+
+  '@material/focus-ring@14.0.0':
+    resolution: {integrity: sha512-fqqka6iSfQGJG3Le48RxPCtnOiaLGPDPikhktGbxlyW9srBVMgeCiONfHM7IT/1eu80O0Y67Lh/4ohu5+C+VAQ==}
+
+  '@material/icon-button@14.0.0':
+    resolution: {integrity: sha512-wHMqzm7Q/UwbWLoWv32Li1r2iVYxadIrwTNxT0+p+7NdfI3lEwMN3NoB0CvoJnHTljjXDzce0KJ3nZloa0P0gA==}
+
+  '@material/list@14.0.0':
+    resolution: {integrity: sha512-AFaBGV9vQyfnG8BT2R3UGVdF5w2SigQqBH+qbOSxQhk4BgVvhDfJUIKT415poLNMdnaDtcuYz+ZWvVNoRDaL7w==}
+
+  '@material/progress-indicator@14.0.0':
+    resolution: {integrity: sha512-09JRTuIySxs670Tcy4jVlqCUbyrO+Ad6z3nHnAi8pYl74duco4n/9jTROV0mlFdr9NIFifnd08lKbiFLDmfJGQ==}
+
+  '@material/ripple@14.0.0':
+    resolution: {integrity: sha512-9XoGBFd5JhFgELgW7pqtiLy+CnCIcV2s9cQ2BWbOQeA8faX9UZIDUx/g76nHLZ7UzKFtsULJxZTwORmsEt2zvw==}
+
+  '@material/rtl@14.0.0':
+    resolution: {integrity: sha512-xl6OZYyRjuiW2hmbjV2omMV8sQtfmKAjeWnD1RMiAPLCTyOW9Lh/PYYnXjxUrNa0cRwIIbOn5J7OYXokja8puA==}
+
+  '@material/shape@14.0.0':
+    resolution: {integrity: sha512-o0mJB0+feOv473KckI8gFnUo8IQAaEA6ynXzw3VIYFjPi48pJwrxa0mZcJP/OoTXrCbDzDeFJfDPXEmRioBb9A==}
+
+  '@material/theme@14.0.0':
+    resolution: {integrity: sha512-6/SENWNIFuXzeHMPHrYwbsXKgkvCtWuzzQ3cUu4UEt3KcQ5YpViazIM6h8ByYKZP8A9d8QpkJ0WGX5btGDcVoA==}
+
+  '@material/tokens@14.0.0':
+    resolution: {integrity: sha512-SXgB9VwsKW4DFkHmJfDIS0x0cGdMWC1D06m6z/WQQ5P5j6/m0pKrbHVlrLzXcRjau+mFhXGvj/KyPo9Pp/Rc8Q==}
+
+  '@material/top-app-bar@14.0.0':
+    resolution: {integrity: sha512-uPej5vHgZnlSB1+koiA9FnabXrHh3O/Npl2ifpUgDVwHDSOxKvLp2LNjyCO71co1QLNnNHIU0xXv3B97Gb0rpA==}
+
+  '@material/touch-target@14.0.0':
+    resolution: {integrity: sha512-o3kvxmS4HkmZoQTvtzLJrqSG+ezYXkyINm3Uiwio1PTg67pDgK5FRwInkz0VNaWPcw9+5jqjUQGjuZMtjQMq8w==}
+
+  '@material/typography@14.0.0':
+    resolution: {integrity: sha512-/QtHBYiTR+TPMryM/CT386B2WlAQf/Ae32V324Z7P40gHLKY/YBXx7FDutAWZFeOerq/two4Nd2aAHBcMM2wMw==}
+
   '@mdi/js@7.4.47':
     resolution: {integrity: sha512-KPnNOtm5i2pMabqZxpUz7iQf+mfrYZyKCZ8QNz85czgEt7cuHcGorWfdzUMWYA0SD+a6Hn4FmJ+YhzzzjkTZrQ==}
 
@@ -993,8 +1149,50 @@ packages:
     resolution: {integrity: sha512-P1Cz1dWaFfR4IR+U13mqqiGsLFf1KbayybWwdd2vfctdV6hDpUkgCY0nKOLLTMSoRd/jJNjtbqzf13K8DCCXQw==}
     engines: {node: '>=18'}
 
+  '@smui/button@9.0.2':
+    resolution: {integrity: sha512-WpbCYTMN4o7R1KSm5pX8X2nihW8zH57ikgWQgyJGLeiBFTvGliMxQ8zOEtQZXSfRJjf67nU6qE1eNVW+TCdGWw==}
+
+  '@smui/card@9.0.2':
+    resolution: {integrity: sha512-HTh5ZXP+FQHa+jIQvyYiKpvYrJCYB0btfeg59Lt22y4wHqfprriQDnV4cxQty0sBznY4aw7+lzvpsNp7MZ1gAA==}
+
+  '@smui/checkbox@9.0.2':
+    resolution: {integrity: sha512-mUbR1nIkX64W3/2jhEBgSdLL6N1JvysMnJOH1TmA6qbt9Lx7QSbbrHviENK8Z/0x32V4NX6Nr885AukMmndfVA==}
+
+  '@smui/chips@9.0.3':
+    resolution: {integrity: sha512-fDoehlYCaIKuN9nnFkSBF03eqqb7ZgdaxoLu/j34TDJvzFmgNRA/kUQokX951g97T1dEiCqWKgOqnU2/v2zkoQ==}
+
+  '@smui/circular-progress@9.0.2':
+    resolution: {integrity: sha512-GcZBzSJ9xPPntgrYzK8YQYfl5IYZla/wh7qemPOzFu2JbKC9z/z1chf5jtQloCJVeJPQOlSrd9RT1lpye4D3lw==}
+
   '@smui/common@9.0.2':
     resolution: {integrity: sha512-m2x8E8PJoULAzGL/A85eWdoQu79NADwHGXC32nPZ64K6BidoZa1gju1cOL7a9dWkcKxOlQ9mta6gVHMXqXVvzg==}
+
+  '@smui/icon-button@9.0.2':
+    resolution: {integrity: sha512-uUNnHfJNC6PMlRESWc0DZHCHZugL8s+l0DGT2QZ/p5HIb5hl7hXhRofWU+lV/1gg/tKz/hSb1Lt6iPPjt5RtTw==}
+
+  '@smui/list@9.0.2':
+    resolution: {integrity: sha512-o/TaUhW9tGdS9/QL1pNtIlybV/Lt7ktpe0bdGOkSmeaqEvrlY0OIJXi16ouAVTf9Rsm/FhKh1polAqgJ9ECLkw==}
+
+  '@smui/menu-surface@9.0.2':
+    resolution: {integrity: sha512-e2gtCxPYvK5v/tgrMDjPQvyMMk/kP4MQ/apEzJEJz/0y+7LVy4Jasm2b6sgkkC+5pP/Bt3XQHYSN8d2T2TF4jA==}
+
+  '@smui/menu@9.0.2':
+    resolution: {integrity: sha512-mafqS67FsPDzqG8OsP+o9sUzTXfvHNIUaTlS/PREWej6svQjsqEGKXVFVALICzqmXg4azhPJ35wufRC0mJckNw==}
+
+  '@smui/paper@9.0.2':
+    resolution: {integrity: sha512-2MtIRFZ8tqPIYCFOcB98npbhEno2WHGGAKs28i3S/E9kjUpGLIN2N0lBolUL1a95XMhacxKm5oq+IVya5a67HA==}
+
+  '@smui/ripple@9.0.2':
+    resolution: {integrity: sha512-MNKK20mhyKG8OpUoHU7ZwsaYMJKZqWxCnyvnp66P945SuLGg4/tGw+NI1K2qvSvDZj/vfdjC6JkTBtxmNNbZJQ==}
+
+  '@smui/tooltip@9.0.2':
+    resolution: {integrity: sha512-VmoQOqnQPH/VHfdL+6z+UzazeWp37/zROD4sr/IbeT0EuS3bgiG2b30pZ/gMeGGfeE4rCyH5hti3qKHj1+IbyA==}
+
+  '@smui/top-app-bar@9.0.2':
+    resolution: {integrity: sha512-FvGKz3g8laR7HbggNsQwK6I79l+1krdK3d9IopU0rIgj+M6QaL1LBDctb9QmVgMq5qd3bSv8nr2GA1blOcfAYg==}
+
+  '@smui/touch-target@9.0.2':
+    resolution: {integrity: sha512-WZBddE1ifceCtUtGIj5eVGqspUF/RWpEeR55ETxaWgt9SW11o2KJtVEKHswv/5FtuoDyO6zDdSuw7qX74ojtxA==}
 
   '@speed-highlight/core@1.2.17':
     resolution: {integrity: sha512-Z92FwKpCtfaW1V0jTU/fh3QzYEZN8wDwrzRIBoADCJfn4mJCNcJN/XegifX7BDrQ8/h9Xh/JnbyMchL0FqXrkg==}
@@ -2494,6 +2692,198 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@material/animation@14.0.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@material/base@14.0.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@material/button@14.0.0':
+    dependencies:
+      '@material/density': 14.0.0
+      '@material/dom': 14.0.0
+      '@material/elevation': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/focus-ring': 14.0.0
+      '@material/ripple': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/shape': 14.0.0
+      '@material/theme': 14.0.0
+      '@material/tokens': 14.0.0
+      '@material/touch-target': 14.0.0
+      '@material/typography': 14.0.0
+      tslib: 2.8.1
+
+  '@material/card@14.0.0':
+    dependencies:
+      '@material/dom': 14.0.0
+      '@material/elevation': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/ripple': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/shape': 14.0.0
+      '@material/theme': 14.0.0
+      tslib: 2.8.1
+
+  '@material/checkbox@14.0.0':
+    dependencies:
+      '@material/animation': 14.0.0
+      '@material/base': 14.0.0
+      '@material/density': 14.0.0
+      '@material/dom': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/focus-ring': 14.0.0
+      '@material/ripple': 14.0.0
+      '@material/theme': 14.0.0
+      '@material/touch-target': 14.0.0
+      tslib: 2.8.1
+
+  '@material/chips@14.0.0':
+    dependencies:
+      '@material/animation': 14.0.0
+      '@material/base': 14.0.0
+      '@material/checkbox': 14.0.0
+      '@material/density': 14.0.0
+      '@material/dom': 14.0.0
+      '@material/elevation': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/focus-ring': 14.0.0
+      '@material/ripple': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/shape': 14.0.0
+      '@material/theme': 14.0.0
+      '@material/tokens': 14.0.0
+      '@material/touch-target': 14.0.0
+      '@material/typography': 14.0.0
+      tslib: 2.8.1
+
+  '@material/circular-progress@14.0.0':
+    dependencies:
+      '@material/animation': 14.0.0
+      '@material/base': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/progress-indicator': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/theme': 14.0.0
+      tslib: 2.8.1
+
+  '@material/density@14.0.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@material/dom@14.0.0':
+    dependencies:
+      '@material/feature-targeting': 14.0.0
+      tslib: 2.8.1
+
+  '@material/elevation@14.0.0':
+    dependencies:
+      '@material/animation': 14.0.0
+      '@material/base': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/theme': 14.0.0
+      tslib: 2.8.1
+
+  '@material/feature-targeting@14.0.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@material/focus-ring@14.0.0':
+    dependencies:
+      '@material/dom': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/rtl': 14.0.0
+
+  '@material/icon-button@14.0.0':
+    dependencies:
+      '@material/base': 14.0.0
+      '@material/density': 14.0.0
+      '@material/dom': 14.0.0
+      '@material/elevation': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/focus-ring': 14.0.0
+      '@material/ripple': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/theme': 14.0.0
+      '@material/touch-target': 14.0.0
+      tslib: 2.8.1
+
+  '@material/list@14.0.0':
+    dependencies:
+      '@material/base': 14.0.0
+      '@material/density': 14.0.0
+      '@material/dom': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/ripple': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/shape': 14.0.0
+      '@material/theme': 14.0.0
+      '@material/typography': 14.0.0
+      tslib: 2.8.1
+
+  '@material/progress-indicator@14.0.0':
+    dependencies:
+      tslib: 2.8.1
+
+  '@material/ripple@14.0.0':
+    dependencies:
+      '@material/animation': 14.0.0
+      '@material/base': 14.0.0
+      '@material/dom': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/theme': 14.0.0
+      tslib: 2.8.1
+
+  '@material/rtl@14.0.0':
+    dependencies:
+      '@material/theme': 14.0.0
+      tslib: 2.8.1
+
+  '@material/shape@14.0.0':
+    dependencies:
+      '@material/feature-targeting': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/theme': 14.0.0
+      tslib: 2.8.1
+
+  '@material/theme@14.0.0':
+    dependencies:
+      '@material/feature-targeting': 14.0.0
+      tslib: 2.8.1
+
+  '@material/tokens@14.0.0':
+    dependencies:
+      '@material/elevation': 14.0.0
+
+  '@material/top-app-bar@14.0.0':
+    dependencies:
+      '@material/animation': 14.0.0
+      '@material/base': 14.0.0
+      '@material/elevation': 14.0.0
+      '@material/ripple': 14.0.0
+      '@material/rtl': 14.0.0
+      '@material/shape': 14.0.0
+      '@material/theme': 14.0.0
+      '@material/typography': 14.0.0
+      tslib: 2.8.1
+
+  '@material/touch-target@14.0.0':
+    dependencies:
+      '@material/base': 14.0.0
+      '@material/feature-targeting': 14.0.0
+      '@material/rtl': 14.0.0
+      tslib: 2.8.1
+
+  '@material/typography@14.0.0':
+    dependencies:
+      '@material/feature-targeting': 14.0.0
+      '@material/theme': 14.0.0
+      tslib: 2.8.1
+
   '@mdi/js@7.4.47': {}
 
   '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
@@ -2629,9 +3019,85 @@ snapshots:
 
   '@sindresorhus/is@7.2.0': {}
 
+  '@smui/button@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+      '@smui/ripple': 9.0.2
+      '@smui/touch-target': 9.0.2
+
+  '@smui/card@9.0.2':
+    dependencies:
+      '@smui/button': 9.0.2
+      '@smui/common': 9.0.2
+      '@smui/icon-button': 9.0.2
+      '@smui/ripple': 9.0.2
+
+  '@smui/checkbox@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+      '@smui/ripple': 9.0.2
+      '@smui/touch-target': 9.0.2
+
+  '@smui/chips@9.0.3':
+    dependencies:
+      '@smui/checkbox': 9.0.2
+      '@smui/common': 9.0.2
+      '@smui/ripple': 9.0.2
+      '@smui/touch-target': 9.0.2
+      safevalues: 1.2.0
+
+  '@smui/circular-progress@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+
   '@smui/common@9.0.2':
     dependencies:
       safevalues: 1.2.0
+
+  '@smui/icon-button@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+      '@smui/ripple': 9.0.2
+      '@smui/touch-target': 9.0.2
+
+  '@smui/list@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+      '@smui/ripple': 9.0.2
+
+  '@smui/menu-surface@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+
+  '@smui/menu@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+      '@smui/list': 9.0.2
+      '@smui/menu-surface': 9.0.2
+      '@smui/ripple': 9.0.2
+
+  '@smui/paper@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+
+  '@smui/ripple@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+
+  '@smui/tooltip@9.0.2':
+    dependencies:
+      '@smui/button': 9.0.2
+      '@smui/common': 9.0.2
+      safevalues: 1.2.0
+
+  '@smui/top-app-bar@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
+      '@smui/ripple': 9.0.2
+
+  '@smui/touch-target@9.0.2':
+    dependencies:
+      '@smui/common': 9.0.2
 
   '@speed-highlight/core@1.2.17': {}
 
@@ -3427,8 +3893,7 @@ snapshots:
 
   totalist@3.0.1: {}
 
-  tslib@2.8.1:
-    optional: true
+  tslib@2.8.1: {}
 
   tsx@4.23.1:
     dependencies:

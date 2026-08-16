@@ -5,7 +5,6 @@ export type UserJWT = {
 	name: string;
 	nickname: string;
 	role: 'user' | 'admin';
-	refresh_token: string;
 	user_id: string;
 };
 

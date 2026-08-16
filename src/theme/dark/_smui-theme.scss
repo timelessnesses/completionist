@@ -2,24 +2,24 @@
 
 @use '@smui/common/theme/color-palette';
 
-// Svelte Colors! (Dark Theme)
+// Material colors for the calendar app (Dark).
 @use '@smui/common/theme/index' as theme with (
-	$primary: #ff3e00,
-	$secondary: color.scale(#676778, $whiteness: -10%),
-	$surface: color.adjust(color-palette.$grey-900, $blue: +4),
-	$background: #000,
-	$error: color-palette.$red-700
+	$primary: #7eb2fd,
+	$secondary: color.scale(#64748b, $whiteness: -20%),
+	$surface: #1f2937,
+	$background: #111827,
+	$error: color-palette.$red-400
 );
 
 html,
 body {
-	background-color: #000;
+	background-color: theme.$surface;
 	color: theme.$on-surface;
 }
 
 a {
-	color: #40b3ff;
+	color: #7db3ff;
 }
 a:visited {
-	color: color.scale(#40b3ff, $lightness: -35%);
+	color: color.scale(#7db3ff, $lightness: -30%);
 }

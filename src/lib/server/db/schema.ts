@@ -1,3 +1,4 @@
+import { relations } from 'drizzle-orm';
 import {
 	integer,
 	primaryKey,
@@ -5,7 +6,6 @@ import {
 	text,
 	type AnySQLiteColumn
 } from 'drizzle-orm/sqlite-core';
-import { access } from 'fs';
 
 export const task = sqliteTable('task', {
 	id: text('id')
@@ -40,7 +40,8 @@ export const user = sqliteTable('user', {
 	logged_in_when: integer('logged_in_when', { mode: 'timestamp_ms' }),
 	jwt_expires_at: integer('jwt_expires_at', { mode: 'timestamp_ms' }),
 	profile_picture_url: text('profile_picture_url'),
-	// refresh_token: text('refresh_token')
+	refresh_token: text('refresh_token'),
+	refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' })
 });
 
 export const task_assignee = sqliteTable(
@@ -203,6 +204,12 @@ export const issue_attachments = sqliteTable('issue_attachments', {
 		.notNull()
 		.$defaultFn(() => new Date())
 });
+
+export const user_identities_relations = relations(user, ({ many }) => {
+	return {
+		identities: many(user_identities)
+	}
+})
 
 // export const google_calendar_tokens = sqliteTable('google_calendar_tokens', {
 // 	access_token: text('access_token').notNull(),

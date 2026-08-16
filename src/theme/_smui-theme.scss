@@ -2,16 +2,26 @@
 
 @use '@smui/common/theme/color-palette';
 
-// Svelte Colors!
+// Material colors for the calendar app.
 @use '@smui/common/theme/index' as theme with (
-	$primary: #ff3e00,
-	$secondary: #676778,
+	$primary: #3b82f6,
+	$secondary: #64748b,
 	$surface: #fff,
-	$background: #fff,
+	$background: #f8fafc,
 	$error: color-palette.$red-900
 );
 
 @use '@smui/common/typography/index' as typography;
+
+// Component theme styles
+@use '@smui/button/style' as button;
+@use '@smui/icon-button/style' as icon-button;
+@use '@smui/card/style' as card;
+@use '@smui/chips/style' as chips;
+@use '@smui/list/style' as list;
+@use '@smui/paper/style' as paper;
+@use '@smui/top-app-bar/style' as top-app-bar;
+@use '@smui/circular-progress/style' as circular-progress;
 
 html,
 body {
@@ -20,10 +30,10 @@ body {
 }
 
 a {
-	color: #40b3ff;
+	color: #3b82f6;
 }
 a:visited {
-	color: color.scale(#40b3ff, $lightness: -35%);
+	color: color.scale(#3b82f6, $lightness: -20%);
 }
 
 html {

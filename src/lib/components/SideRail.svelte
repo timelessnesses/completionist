@@ -1,0 +1,61 @@
+<script lang="ts">
+	import Button, { Label } from '@smui/button';
+	import Chip, { Set, Text } from '@smui/chips';
+	import { mdiPlus, mdiCalendarMonth } from '@mdi/js';
+	import MdiIcon from './MdiIcon.svelte';
+	import MiniMonth from './MiniMonth.svelte';
+	import UpcomingList from './UpcomingList.svelte';
+	import { workspace } from '$lib/mock/data';
+</script>
+
+<aside class="rail">
+	<div class="brand">
+		<span class="logo"><MdiIcon path={mdiCalendarMonth} size={18} /></span>
+		<span class="app">{workspace.appName}</span>
+		<Set chips={[workspace.calendarName]} nonInteractive>
+			{#snippet chip(chipKey)}
+				<Chip chip={chipKey} class="ws-chip">
+					<Text>{chipKey}</Text>
+				</Chip>
+			{/snippet}
+		</Set>
+
+	</div>
+
+	<div class="create">
+		<Button variant="raised" class="create-btn" onclick={() => alert('TODO: open create-event dialog')}>
+			<MdiIcon path={mdiPlus} size={18} />
+			<Label>Create Event</Label>
+		</Button>
+	</div>
+
+	<MiniMonth />
+	<UpcomingList />
+</aside>
+
+<style>
+	.rail {
+		width: 264px; flex-shrink: 0;
+		display: flex; flex-direction: column; gap: 16px;
+		padding: 12px 0; overflow-y: auto;
+		background: #f8fafd;
+	}
+	.brand { display: flex; align-items: center; gap: 8px; padding: 0 16px; }
+	.logo {
+		width: 32px; height: 32px; border-radius: 8px;
+		background: #0b57d0; color: #fff;
+		display: grid; place-items: center;
+	}
+	.app { font-size: 15px; font-weight: 600; color: #1f1f1f; }
+	.brand :global(.ws-chip) {
+		background: #e9eef6; height: 24px; border-radius: 8px;
+		font-size: 12px; color: #1f1f1f;
+	}
+	.create { padding: 0 16px; }
+	.create :global(.create-btn) {
+		width: 100%; border-radius: 12px; height: 44px;
+		background: #0b57d0; color: #fff;
+		display: flex; align-items: center; gap: 8px;
+		text-transform: none; font-size: 14px;
+	}
+</style>

@@ -2,10 +2,10 @@ import { env as envPrivate } from '$env/dynamic/private';
 import { env as envPublic } from '$env/dynamic/public';
 import { error } from '@sveltejs/kit';
 import { OAuth2Client } from 'google-auth-library';
-import * as jose from 'jose';
-import { drizzle, DrizzleD1Database } from 'drizzle-orm/d1';
-import { google_calendar_tokens, user, user_identities } from '$lib/server/db/schema.js';
+import { user, user_identities } from '$lib/server/db/schema.js';
 import { and, eq } from 'drizzle-orm';
+import { randomBytesToString, hashString, issuingNewSessionToken, turnThisToUint8Array } from './stuff';
+import { getDb } from '$lib/server/db/index.js';
 
 export type GoogleJwtRequest = {
 	id_token: string;
@@ -20,7 +20,7 @@ export async function POST({ request, cookies, platform }) {
 	if (!envPublic.PUBLIC_GOOGLE_OAUTH_CLIENT_ID || !envPrivate.GOOGLE_OAUTH_CLIENT_SECRET) {
 		throw error(400, 'Google OAuth client ID or secret is not set in environment variables.');
 	}
-	const db = drizzle(platform?.env.COMPLETIONIST_DB as D1Database);
+	const db = getDb(platform?.env.COMPLETIONIST_DB as D1Database);
 	const { id_token } = (await request.json()) as GoogleJwtRequest;
 
 	const ticket = await client.verifyIdToken({
@@ -42,16 +42,15 @@ export async function POST({ request, cookies, platform }) {
 
 	// Look up the identity for this Google account. A user may have multiple
 	// identities (emails/providers); the email lives on user_identities, not user.
-	const identity = await db
-		.select()
-		.from(user_identities)
-		.where(
-			and(
-				eq(user_identities.provider, 'google'),
-				eq(user_identities.email, payload.email)
-			)
-		)
-		.get();
+	const identity = await db.query.user_identities
+		.findFirst(
+			{
+				where: and(
+					eq(user_identities.provider, 'google'),
+					eq(user_identities.email, payload.email)
+				)
+			}
+		);
 
 	if (!identity && envPrivate.ADMIN_EMAIL !== payload.email) {
 		return new Response(JSON.stringify({ error: 'Student ID not whitelisted' }), { status: 400 });
@@ -59,7 +58,7 @@ export async function POST({ request, cookies, platform }) {
 
 	let resolvedUser;
 	if (identity) {
-		resolvedUser = await db.select().from(user).where(eq(user.id, identity.user_id)).get();
+		resolvedUser = await db.query.user.findFirst({ where: eq(user.id, identity.user_id) });
 	} else {
 		if (envPrivate.ADMIN_EMAIL === payload.email) { 
 			await db.insert(user).values({ 
@@ -67,7 +66,7 @@ export async function POST({ request, cookies, platform }) {
 				logged_in_when: new Date(),
 				jwt_expires_at: new Date(Date.now() + 3600 * 1000),
 			}).run();
-			const admin_user = await db.select().from(user).where(eq(user.name, payload.name || 'Admin')).get();
+			const admin_user = await db.query.user.findFirst({ where: eq(user.name, payload.name || 'Admin') });
 			if (!admin_user) {
 				throw error(500, 'Admin user not found.');
 			}
@@ -91,13 +90,25 @@ export async function POST({ request, cookies, platform }) {
 		throw error(400, `No user account linked to ${payload.email}.`);
 	}
 
+	const refresh_token = randomBytesToString(64);
+	const hashed_refresh_token = await hashString(refresh_token);
+	await db.update(user).set({
+		refresh_token: hashed_refresh_token
+	}).where(eq(user.id, resolvedUser.id)).run();
+
 	const id = await issuingNewSessionToken(
 		resolvedUser,
-		payload.email,
 		db,
-		turnThisToUint8Array(platform?.env.JWT_SECRET_BASE64 as string)
+		turnThisToUint8Array(platform?.env.JWT_SECRET_BASE64 as string),
 	);
 	cookies.set('token', id, {
+		path: '/',
+		// httpOnly: true,
+		sameSite: 'strict',
+		// secure: true,
+		maxAge: 3600
+	});
+	cookies.set('refresh_token', refresh_token, {
 		path: '/',
 		// httpOnly: true,
 		sameSite: 'strict',
@@ -108,41 +119,3 @@ export async function POST({ request, cookies, platform }) {
 	return new Response(JSON.stringify({ success: true }), { status: 200 });
 }
 
-async function issuingNewSessionToken(
-	resolvedUser: typeof user.$inferSelect,
-	email: string,
-	database: DrizzleD1Database,
-	secret: Uint8Array
-) {
-	if (!secret) {
-		throw error(500, 'Shared secret is not set in environment variables.');
-	}
-
-	const sessionToken = await new jose.SignJWT({
-		name: resolvedUser.name
-	})
-		.setIssuedAt()
-		.setExpirationTime('1h')
-		.setSubject(resolvedUser.id)
-		.setAudience(email)
-		.setProtectedHeader({
-			alg: 'HS256',
-			typ: 'JWT'
-		})
-		.sign(secret);
-
-	await database
-		.update(user)
-		.set({
-			logged_in_when: new Date(),
-			jwt_expires_at: new Date(Date.now() + 3600 * 1000)
-		})
-		.where(eq(user.id, resolvedUser.id))
-		.run();
-	return sessionToken;
-}
-
-function turnThisToUint8Array(secret: string): Uint8Array {
-	const uint8Array = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
-	return uint8Array;
-}

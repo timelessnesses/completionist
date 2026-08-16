@@ -15,6 +15,13 @@
       "when": 1786800880342,
       "tag": "0001_flippant_bushwacker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786867540553,
+      "tag": "0002_absent_grandmaster",
+      "breakpoints": true
     }
   ]
 }

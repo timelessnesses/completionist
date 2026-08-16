@@ -1,0 +1,52 @@
+import { user } from "$lib/server/db/schema";
+import { error } from "console";
+import { eq } from "drizzle-orm/sql/expressions/conditions";
+import * as jose from "jose";
+import { getDb } from "$lib/server/db";
+
+export async function issuingNewSessionToken(
+	resolvedUser: typeof user.$inferSelect,
+	database: ReturnType<typeof getDb>,
+	secret: Uint8Array,
+) {
+	if (!secret) {
+		throw error(500, 'Shared secret is not set in environment variables.');
+	}
+
+	const sessionToken = await new jose.SignJWT()
+		.setIssuedAt()
+		.setExpirationTime('1h')
+		.setSubject(resolvedUser.id)
+		.setAudience("completionist")
+		.setProtectedHeader({
+			alg: 'HS256',
+			typ: 'JWT'
+		})
+		.sign(secret);
+
+	await database
+		.update(user)
+		.set({
+			logged_in_when: new Date(),
+			jwt_expires_at: new Date(Date.now() + 3600 * 1000)
+		})
+		.where(eq(user.id, resolvedUser.id))
+		.run();
+	return sessionToken;
+}
+
+export function turnThisToUint8Array(secret: string): Uint8Array {
+	const uint8Array = Uint8Array.from(atob(secret), (c) => c.charCodeAt(0));
+	return uint8Array;
+}
+
+export function randomBytesToString(length: number): string { 
+	const bytes = new Uint8Array(length);
+	crypto.getRandomValues(bytes);
+	return btoa(String.fromCharCode(...bytes));
+}
+
+export async function hashString(str: string): Promise<string> { 
+	const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+	return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
