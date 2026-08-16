@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
-		"build": "wrangler types --check && vite build",
+		"build": "pnpm cf-typegen && pnpm gen && wrangler types --check && vite build",
 		"preview": "pnpm run build && wrangler dev",
 		"prepare": "svelte-kit sync || echo '' && npm run smui-theme-light && npm run smui-theme-dark",
 		"check": "pnpm cf-typegen && pnpm gen && wrangler types --check && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
