@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '$lib/assets/index.css';
+	import { onMount } from 'svelte';
 
 	const builtAt = new Date(__BUILD_DATE).toLocaleString('en-TH', {
 		dateStyle: 'medium',
@@ -7,6 +8,14 @@
 		timeZone: 'Asia/Bangkok'
 	});
 	let { children, data } = $props();
+
+	let server_timing_number: number | null = $state(null);
+	onMount(() => {
+		const server_timing = document.querySelector("div[data-server-timing]");
+		if (server_timing) {
+			server_timing_number = parseInt(server_timing.dataset.serverTiming!);
+		}
+	})
 </script>
 
 <div class="grid h-dvh grid-rows-[minmax(0,1fr)_auto] bg-background text-foreground">
@@ -23,6 +32,9 @@
 				<span> | </span>
 				<span>CF ray </span>
 				<span class="font-medium text-foreground">{data.cfRay ?? 'unknown'}</span>
+				<span> | </span>
+				<span>Server time </span>
+				<span class="font-medium text-foreground">{server_timing_number}ms</span>
 			</p>
 
 			<p class="text-right">

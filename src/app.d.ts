@@ -30,6 +30,7 @@ declare global {
 				nickname: string;
 				admin: boolean;
 			} | undefined;
+			request_start_time: number;
 		}
 		// interface PageData {}
 		// interface PageState {}

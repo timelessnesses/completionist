@@ -9,6 +9,7 @@ import { user, user_identities } from '$lib/server/db/schema';
 const publicRoutes = ['/login', '/api/auth/google-jwt', '/api/auth/logout'];
 
 export const handle: Handle = async ({ event, resolve }) => {
+	event.locals.request_start_time = Date.now();
 	const env = event.platform?.env as Env;
 	const token = event.cookies.get('token');
 	let refresh_token = event.cookies.get('refresh_token') || "";
@@ -64,5 +65,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	if (!isPublic && !event.locals.user) {
 		return redirect(302, '/login');
 	}
-	return resolve(event);
+	return await resolve(event, {
+		transformPageChunk: ({ html }) => html.replace('%server-timing%', `${Date.now() - event.locals.request_start_time}`)
+	});
 };
