@@ -58,4 +58,9 @@
 		display: flex; align-items: center; gap: 8px;
 		text-transform: none; font-size: 14px;
 	}
+
+	/* On phones the floating "+" button replaces this. */
+	@media (max-width: 860px) {
+		.create { display: none; }
+	}
 </style>

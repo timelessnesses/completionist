@@ -6,6 +6,7 @@ import { user, user_identities } from '$lib/server/db/schema.js';
 import { and, eq } from 'drizzle-orm';
 import { randomBytesToString, hashString, issuingNewSessionToken, turnThisToUint8Array } from './stuff';
 import { getDb } from '$lib/server/db/index.js';
+import { JWT_EXPIRATION_IN_SECONDS, REFRESH_TOKEN_EXPIRATION_IN_SECONDS } from '$lib/constants';
 
 export type GoogleJwtRequest = {
 	id_token: string;
@@ -64,7 +65,8 @@ export async function POST({ request, cookies, platform }) {
 			await db.insert(user).values({ 
 				name: payload.name || 'Admin',
 				logged_in_when: new Date(),
-				jwt_expires_at: new Date(Date.now() + 3600 * 1000),
+				jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
+				refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS)
 			}).run();
 			const admin_user = await db.query.user.findFirst({ where: eq(user.name, payload.name || 'Admin') });
 			if (!admin_user) {
@@ -76,12 +78,6 @@ export async function POST({ request, cookies, platform }) {
 				provider_user_id: payload.email,
 				email: payload.email,
 			}).run();
-			/* await db.insert(google_calendar_tokens).values({
-				user: admin_user.id,
-				access_token: ticket.getPayload().,
-				refresh_token: '',
-				expires_at: new Date()
-			}).run(); */
 			resolvedUser = admin_user;
 		}
 	}
