@@ -3,15 +3,16 @@
 	import { mdiChevronLeft, mdiChevronRight } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import { WEEKDAYS_NARROW, MONTHS, buildMonthGrid, isSameDay, addMonths } from '$lib/calendar';
-	import { MOCK_TODAY } from '$lib/mock/data';
+	import type { CalendarEvent } from '$lib/mock/data';
 
 	let {
-		initial = new Date(2026, 9, 1) // October 2026, like the mock
-	}: { initial?: Date } = $props();
+		events,
+		initial = new Date(), // October 2026, like the mock
+	}: { initial?: Date, events: CalendarEvent[] } = $props();
 
 	let cursor = $state(initial);
 	// Mock: day 14 selected to mirror the design. Wire to real state later.
-	let selected = $state(new Date(2026, 9, 14));
+	let selected = $state(new Date());
 
 	const cells = $derived(buildMonthGrid(cursor.getFullYear(), cursor.getMonth()));
 </script>
@@ -38,7 +39,7 @@
 				class="day"
 				class:dim={!cell.inMonth}
 				class:selected={isSameDay(cell.date, selected)}
-				class:today={isSameDay(cell.date, MOCK_TODAY)}
+				class:today={isSameDay(cell.date, new Date())}
 				onclick={() => (selected = cell.date)}
 			>
 				{cell.date.getDate()}

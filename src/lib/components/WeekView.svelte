@@ -9,9 +9,9 @@
 		hourLabel,
 		parseTimeToMinutes
 	} from '$lib/calendar';
-	import { events, eventPalette, MOCK_TODAY } from '$lib/mock/data';
+	import { type CalendarEvent } from '$lib/mock/data';
 
-	let { viewDate }: { viewDate: Date } = $props();
+	let { viewDate, events }: { viewDate: Date; events: CalendarEvent[] } = $props();
 
 	const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
@@ -51,7 +51,7 @@
 				{#each days as d (toKey(d))}
 					<div class="dhead">
 						<span class="dow">{WEEKDAYS[d.getDay()]}</span>
-						<span class="dnum" class:today={isSameDay(d, MOCK_TODAY)}>{d.getDate()}</span>
+						<span class="dnum" class:today={isSameDay(d, new Date())}>{d.getDate()}</span>
 					</div>
 				{/each}
 			</div>
@@ -62,8 +62,7 @@
 				{#each days as d (toKey(d))}
 					<div class="ad-col">
 						{#each allDayEvents(toKey(d)) as ev (ev.id)}
-							{@const c = eventPalette[ev.color]}
-							<button class="ad-ev" style:background={c.bg} style:color={c.fg} title={ev.title}>
+							<button class="ad-ev" style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`} style:color={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`} title={ev.title}>
 								{ev.title}
 							</button>
 						{/each}
@@ -80,17 +79,16 @@
 				{/each}
 			</div>
 			{#each days as d (toKey(d))}
-				<div class="col" class:todaycol={isSameDay(d, MOCK_TODAY)}>
+				<div class="col" class:todaycol={isSameDay(d, new Date())}>
 					{#each HOURS as h}
 						<div class="h-row"></div>
 					{/each}
 					{#each timedEvents(toKey(d)) as t (t.ev.id)}
-						{@const c = eventPalette[t.ev.color]}
 						<button
 							class="ev"
 							style:top={`${t.top}%`}
-							style:background={c.bg}
-							style:color={c.fg}
+							style:background={`rgba(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b}, 0.15)`}
+							style:color={`rgb(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b})`}
 							title={t.ev.title}
 						>
 							<span class="ev-title">{t.ev.title}</span>

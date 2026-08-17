@@ -5,14 +5,16 @@
 	import MdiIcon from './MdiIcon.svelte';
 	import MiniMonth from './MiniMonth.svelte';
 	import UpcomingList from './UpcomingList.svelte';
-	import { workspace } from '$lib/mock/data';
+	import type { CalendarEvent } from '$lib/mock/data';
+
+	const { events, upcoming }: { events: CalendarEvent[], upcoming: CalendarEvent[] } = $props();
 </script>
 
 <aside class="rail">
 	<div class="brand">
 		<span class="logo"><MdiIcon path={mdiCalendarMonth} size={18} /></span>
-		<span class="app">{workspace.appName}</span>
-		<Set chips={[workspace.calendarName]} nonInteractive>
+		<span class="app">Completionist</span>
+		<Set chips={["English Major"]} nonInteractive>
 			{#snippet chip(chipKey)}
 				<Chip chip={chipKey} class="ws-chip">
 					<Text>{chipKey}</Text>
@@ -29,8 +31,8 @@
 		</Button>
 	</div>
 
-	<MiniMonth />
-	<UpcomingList />
+	<MiniMonth {events} />
+	<UpcomingList upcoming={upcoming} />
 </aside>
 
 <style>

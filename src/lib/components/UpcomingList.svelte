@@ -1,6 +1,8 @@
 <script lang="ts">
-	import { upcoming, eventPalette } from '$lib/mock/data';
 	import { prettyDate } from '$lib/calendar';
+	import type { CalendarEvent } from '$lib/mock/data';
+
+	const { upcoming }: { upcoming: CalendarEvent[] } = $props();
 </script>
 
 <div class="upcoming">
@@ -10,9 +12,8 @@
 	</div>
 
 	{#each upcoming as ev (ev.id)}
-		{@const c = eventPalette[ev.color]}
 		<button class="card">
-			<span class="bar" style:background={c.bg}></span>
+			<span class="bar" style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}></span>
 			<span class="body">
 				<span class="title">{ev.title}</span>
 				<span class="when">{prettyDate(ev.date)}{ev.time ? `, ${ev.time}` : ''}</span>

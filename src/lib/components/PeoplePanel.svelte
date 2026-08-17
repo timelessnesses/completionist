@@ -5,12 +5,6 @@
 	import Paper from '@smui/paper';
 	import { mdiShareVariantOutline, mdiCogOutline, mdiPlus, mdiMinus } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
-	import { people, waiting, capacity } from '$lib/mock/data';
-
-	// Mock handlers — replace with API calls.
-	const approve = (id: string) => console.log('approve', id);
-	const reject = (id: string) => console.log('reject', id);
-	const approveAll = () => console.log('approve all');
 </script>
 
 <aside class="panel">

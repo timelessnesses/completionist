@@ -12,20 +12,24 @@
 	import {
 		WEEKDAYS, MONTHS, buildMonthGrid, isSameDay, addMonths, addDays
 	} from '$lib/calendar';
-	import { events, filters, workspace, eventPalette, MOCK_TODAY } from '$lib/mock/data';
+	import type { CalendarEvent, FilterTag } from '$lib/mock/data';
 
 	type View = 'Month' | 'Week';
 	const views: View[] = ['Month', 'Week'];
 
 	let {
 		onMenu,
-		onPeople
+		onPeople,
+		filters,
+		events
 	}: {
 		onMenu?: () => void;
 		onPeople?: () => void;
+		filters: FilterTag[];
+		events: CalendarEvent[];
 	} = $props();
 
-	let viewDate = $state(new Date(2026, 7, 1)); // August 2026
+	let viewDate = $state(new Date()); // August 2026
 	let view = $state<View>('Month');
 	let activeFilters = $state(new Set(filters.map((f) => f.id)));
 
@@ -55,7 +59,7 @@
 			<Button
 				variant="outlined"
 				class="today-btn"
-				onclick={() => (viewDate = new Date(MOCK_TODAY))}
+				onclick={() => (viewDate = new Date())}
 			>
 				Today
 			</Button>
@@ -82,12 +86,12 @@
 	</header>
 
 	<!-- Sharing banner -->
-	<div class="banner">
+	<!-- <div class="banner">
 		<MdiIcon path={mdiCloudCheckOutline} size={18} />
 		<span>
 			Shared with {workspace.sharedWith} people · {workspace.permission} · {workspace.session}
 		</span>
-	</div>
+	</div> -->
 
 	<!-- Filter chips -->
 	<div class="chips">
@@ -106,7 +110,7 @@
 
 	{#if view === 'Week'}
 		<!-- Week view -->
-		<WeekView {viewDate} />
+		<WeekView {viewDate} {events} />
 	{:else}
 		<!-- Month grid -->
 		<div class="grid">
@@ -116,16 +120,15 @@
 			{#each cells as cell (cell.key)}
 				{@const dayEvents = eventsByDay.get(cell.key) ?? []}
 				<div class="cell" class:dim={!cell.inMonth}>
-					<span class="daynum" class:today={isSameDay(cell.date, MOCK_TODAY)}>
+					<span class="daynum" class:today={isSameDay(cell.date, new Date())}>
 						{cell.date.getDate()}
 					</span>
 					<div class="events">
 						{#each dayEvents.slice(0, 3) as ev (ev.id)}
-							{@const c = eventPalette[ev.color]}
 							<button
 								class="event"
-								style:background={c.bg}
-								style:color={c.fg}
+								style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
+								// style:color={c.fg}
 								title={ev.title}
 							>
 								{ev.title}

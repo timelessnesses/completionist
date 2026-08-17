@@ -33,7 +33,16 @@
 			"binding": "COMPLETIONIST_KV",
 			"id": "3b44dbe7a453453da6b89cce18596dae"
 		}
-	]
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "GlobalWS",
+				"class_name": "GlobalWS",
+				"script_name": "GlobalWS"
+			}
+		]
+	}
 
 	/**
 	 * Smart Placement
