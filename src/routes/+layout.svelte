@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '$lib/assets/index.css';
 	import { onMount } from 'svelte';
+	import { connectWS, getWS } from '$lib/websocket.svelte.js';
 
 	const builtAt = new Date(__BUILD_DATE).toLocaleString('en-TH', {
 		dateStyle: 'medium',
@@ -10,12 +11,26 @@
 	let { children, data } = $props();
 
 	let server_timing_number: number | null = $state(null);
+	let latency: number | null = $state(null);
 	onMount(() => {
 		const server_timing = document.querySelector("div[data-server-timing]");
 		if (server_timing) {
 			server_timing_number = parseInt(server_timing.dataset.serverTiming!);
 		}
+		connectWS();
+		setInterval(() => {
+			getWS().send(JSON.stringify({ type: 'ping' , calledWhen: Date.now() }));
+		}, 1000)
+
+		getWS().addEventListener('message', event => {
+			const data = JSON.parse(event.data);
+			if (data.type === 'pong') {
+				latency = data.latency;
+			}
+		});
 	})
+
+	
 </script>
 
 <div class="grid h-dvh grid-rows-[minmax(0,1fr)_auto] bg-background text-foreground">
@@ -35,6 +50,9 @@
 				<span> | </span>
 				<span>Server time </span>
 				<span class="font-medium text-foreground">{server_timing_number}ms</span>
+				<span> | </span>
+				<span>Latency </span>
+				<span class="font-medium text-foreground">{latency}ms</span>
 			</p>
 
 			<p class="text-right">

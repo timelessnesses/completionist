@@ -6,7 +6,7 @@ import { and, eq, gt, isNotNull, lt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { user, user_identities } from '$lib/server/db/schema';
 
-const publicRoutes = ['/login', '/api/auth/google-jwt', '/api/auth/logout'];
+const publicRoutes = ['/login', '/api/auth/google-jwt', '/api/auth/logout', '/api/ws'];
 
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.request_start_time = Date.now();

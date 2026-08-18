@@ -21,7 +21,8 @@
 		"cf-typegen": "wrangler types ./src/worker-configuration.d.ts",
 		"secret-generator": "openssl rand -base64 32",
 		"smui-theme-light": "smui-theme compile static/smui.css -i src/theme",
-		"smui-theme-dark": "smui-theme compile static/smui-dark.css -i src/theme/dark"
+		"smui-theme-dark": "smui-theme compile static/smui-dark.css -i src/theme/dark",
+		"dev:worker": "concurrently -k -n build,wrangler -c blue,green \"vite build --watch\" \"wrangler dev\""
 	},
 	"devDependencies": {
 		"@material/animation": "^14.0.0",
@@ -69,12 +70,17 @@
 		"smui-theme": "^9.0.3",
 		"svelte": "^5.56.1",
 		"svelte-check": "^4.6.0",
+		"sveltekit-cloudflare-do": "^0.2.1",
 		"tailwindcss": "^4.3.0",
 		"typescript": "^6.0.3",
 		"vite": "^8.0.16",
 		"wrangler": "^4.114.0"
 	},
 	"dependencies": {
+		"@capacitor/core": "^8.5.0",
+		"@capacitor/local-notifications": "^8.3.0",
+		"@capacitor/push-notifications": "^8.1.2",
+		"concurrently": "^10.0.5",
 		"google-auth-library": "^11.0.2",
 		"jose": "^6.2.7",
 		"resend": "^6.18.1",

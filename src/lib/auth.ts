@@ -1,5 +1,4 @@
 import * as jose from 'jose';
-import { env as envPrivate } from '$env/dynamic/private';
 
 export type UserJWT = {
 	name: string;
@@ -21,7 +20,7 @@ export async function verifyJWT(
 		algorithms: ['HS256']
 	});
 
-	if (envPrivate.ADMIN_EMAIL && envPrivate.ADMIN_EMAIL === payload.sub) {
+	if (env.ADMIN_EMAIL && env.ADMIN_EMAIL === payload.sub) {
 		payload.role = 'admin';
 	}
 

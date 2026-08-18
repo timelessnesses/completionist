@@ -38,11 +38,17 @@
 		"bindings": [
 			{
 				"name": "GlobalWS",
-				"class_name": "GlobalWS",
-				"script_name": "GlobalWS"
+				"class_name": "GlobalWS"
+				// "script_name": "GlobalWS"
 			}
 		]
-	}
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["GlobalWS"]
+		}
+	]
 
 	/**
 	 * Smart Placement

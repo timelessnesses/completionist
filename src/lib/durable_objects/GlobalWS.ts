@@ -24,9 +24,17 @@ type NewCalendarEventRequest = {
     event: CalendarEvent;
 }
 
+type EchoRequest = {
+    type: 'echo';
+    content: string;
+}
 
+type Heartbeat = {
+    type: 'ping';
+    calledWhen: number;
+}
 
-type PossibleRequest = LoginRequest | OnlineUsersRequest | UserSendsMessageRequest;
+type PossibleRequest = LoginRequest | OnlineUsersRequest | UserSendsMessageRequest | EchoRequest | Heartbeat;
 
 export class GlobalWS extends DurableObject { 
     state: DurableObjectState;
@@ -35,14 +43,22 @@ export class GlobalWS extends DurableObject {
     db: ReturnType<typeof getDb>;
 
     constructor(state: DurableObjectState, env: Env) {
+        console.log("GlobalWS constructor called");
         super(state, env);
+        console.log("GlobalWS constructor finished");
         this.state = state;
         this.sessions = new Map();
         this.env = env;
+        console.log("GlobalWS constructor finished, initializing db");
         this.db = getDb(env.COMPLETIONIST_DB);
+        console.log("GlobalWS constructor finished, db initialized");
     }
 
-    async fetch(_: Request): Promise<Response> { 
+    async fetch(request: Request): Promise<Response> { 
+    if (request.headers.get("Upgrade") !== "websocket") {
+        return new Response("websocket only!!!!", { status: 426 });
+    }
+        console.log("hiii")
         const ws = new WebSocketPair();
         const [client, server] = Object.values(ws);
         this.ctx.acceptWebSocket(server);
@@ -61,6 +77,12 @@ export class GlobalWS extends DurableObject {
             this.sessions.entries().find(([socket, session]) => {
                 return session.user_id === data.user_id && socket !== ws;
             })?.[0].send(JSON.stringify({ type: 'user_message', user_id: data.user_id, message: data.message }));
+        } else if (data.type === 'echo') {
+            ws.send(JSON.stringify({ type: 'echoResponse', content: data.content }));
+            console.log('Echo request received.');
+        } else if (data.type === 'ping') {
+            const calledWhen = Date.now();
+            ws.send(JSON.stringify({ type: 'pong', latency: calledWhen - data.calledWhen }));
         }
     }
 
