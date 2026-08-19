@@ -15,6 +15,7 @@
 	onMount(() => {
 		const server_timing = document.querySelector("div[data-server-timing]");
 		if (server_timing) {
+			// @ts-expect-error - dataset is there
 			server_timing_number = parseInt(server_timing.dataset.serverTiming!);
 		}
 		connectWS();
@@ -25,7 +26,7 @@
 		getWS().addEventListener('message', event => {
 			const data = JSON.parse(event.data);
 			if (data.type === 'pong') {
-				latency = data.latency;
+				latency = data.calledArrived - data.calledWhen;
 			}
 		});
 	})

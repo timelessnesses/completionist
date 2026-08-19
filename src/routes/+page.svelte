@@ -4,6 +4,7 @@
 	import PeoplePanel from '$lib/components/PeoplePanel.svelte';
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
 	import { mdiPlus, mdiClose } from '@mdi/js';
+	import type { PageProps } from './$types';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
@@ -12,6 +13,10 @@
 		railOpen = false;
 		peopleOpen = false;
 	}
+
+	const data: PageProps = $props();
+	const event = data.event;
+	
 </script>
 
 <svelte:head>

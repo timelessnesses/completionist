@@ -17,6 +17,21 @@ importers:
       '@capacitor/push-notifications':
         specifier: ^8.1.2
         version: 8.1.2(@capacitor/core@8.5.0)
+      '@capacitor/splash-screen':
+        specifier: ^8.0.2
+        version: 8.0.2(@capacitor/core@8.5.0)
+      '@capawesome-team/capacitor-android-battery-optimization':
+        specifier: ^8.0.1
+        version: 8.0.1(@capacitor/core@8.5.0)
+      '@capawesome/capacitor-google-sign-in':
+        specifier: ^0.1.2
+        version: 0.1.2(@capacitor/core@8.5.0)
+      '@joshthomas/sveltekit-adapter-cloudflare':
+        specifier: ^0.2.1
+        version: 0.2.1(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.7)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)))(svelte@5.56.7)(typescript@6.0.3)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)))(wrangler@4.114.0)
+      '@squareetlabs/capacitor-dont-kill-my-app':
+        specifier: ^7.0.0
+        version: 7.0.0(@capacitor/core@8.5.0)
       concurrently:
         specifier: ^10.0.5
         version: 10.0.5
@@ -199,6 +214,21 @@ packages:
 
   '@capacitor/push-notifications@8.1.2':
     resolution: {integrity: sha512-TQl4XxqJfNF+KbSYBFMXYYT5WXUaleVKXlByhh/8+KySMVNjp+l5OqAUoGe/sY1IAnGXEuUeCjA/WLZEVvGwrA==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  '@capacitor/splash-screen@8.0.2':
+    resolution: {integrity: sha512-0C6rYScr13WfAE9nPl4ScOQynmjFv9NT3Th+RZkD4ezYHmER6mcl1/lDYsv7jg3Rj3FOvLrlTlmNkUrr83kZzQ==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  '@capawesome-team/capacitor-android-battery-optimization@8.0.1':
+    resolution: {integrity: sha512-961KMUgiOOXxEY39/C5bcn+1NNVmEidgA9hUKzgciCt83jOh4WjN9YUWI1B/u4CFyHKMS0sLBjufD3IRfKBMrA==}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
+
+  '@capawesome/capacitor-google-sign-in@0.1.2':
+    resolution: {integrity: sha512-41Z5LBVZJQ/20lEbzQJUtjfm7rCUhiq0EsfKmytTfKjqUjQB4zy0zlDMowe/z5CtetL8u7WGvERtyRYil2exww==}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
 
@@ -881,6 +911,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@joshthomas/sveltekit-adapter-cloudflare@0.2.1':
+    resolution: {integrity: sha512-N/0lDWpKBsZCGzTl1ZKI3Y1Dx3+II51nx2h5gpNjqHKdExOy1Afb/fwtP9RAVofsiYIY2mQm5WigAzoqhixB/A==}
+    peerDependencies:
+      '@sveltejs/kit': ^2.0.0
+      wrangler: ^4.0.0
+
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
 
@@ -1224,6 +1260,11 @@ packages:
 
   '@speed-highlight/core@1.2.17':
     resolution: {integrity: sha512-Z92FwKpCtfaW1V0jTU/fh3QzYEZN8wDwrzRIBoADCJfn4mJCNcJN/XegifX7BDrQ8/h9Xh/JnbyMchL0FqXrkg==}
+
+  '@squareetlabs/capacitor-dont-kill-my-app@7.0.0':
+    resolution: {integrity: sha512-jlpVKJ2g4j4wsNhlqGuWO/1yVvZNROl1uxLIEZIJopxjmlRDgTwUSdaDYV7YG/ILziCL+ND2WN5pyMySoqyNQA==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@stablelib/base64@1.0.1':
     resolution: {integrity: sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ==}
@@ -2352,6 +2393,18 @@ snapshots:
     dependencies:
       '@capacitor/core': 8.5.0
 
+  '@capacitor/splash-screen@8.0.2(@capacitor/core@8.5.0)':
+    dependencies:
+      '@capacitor/core': 8.5.0
+
+  '@capawesome-team/capacitor-android-battery-optimization@8.0.1(@capacitor/core@8.5.0)':
+    dependencies:
+      '@capacitor/core': 8.5.0
+
+  '@capawesome/capacitor-google-sign-in@0.1.2(@capacitor/core@8.5.0)':
+    dependencies:
+      '@capacitor/core': 8.5.0
+
   '@cloudflare/kv-asset-handler@0.5.0': {}
 
   '@cloudflare/unenv-preset@2.16.1(unenv@2.0.0-rc.24)(workerd@1.20260722.1)':
@@ -2741,6 +2794,13 @@ snapshots:
 
   '@img/sharp-win32-x64@0.35.2':
     optional: true
+
+  '@joshthomas/sveltekit-adapter-cloudflare@0.2.1(@sveltejs/kit@2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.7)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)))(svelte@5.56.7)(typescript@6.0.3)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)))(wrangler@4.114.0)':
+    dependencies:
+      '@cloudflare/workers-types': 4.20260702.1
+      '@sveltejs/kit': 2.70.1(@sveltejs/vite-plugin-svelte@7.2.0(svelte@5.56.7)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1)))(svelte@5.56.7)(typescript@6.0.3)(vite@8.1.5(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(sass@1.102.0)(tsx@4.23.1))
+      worktop: 0.8.0-next.18
+      wrangler: 4.114.0
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -3174,6 +3234,10 @@ snapshots:
       '@smui/common': 9.0.2
 
   '@speed-highlight/core@1.2.17': {}
+
+  '@squareetlabs/capacitor-dont-kill-my-app@7.0.0(@capacitor/core@8.5.0)':
+    dependencies:
+      '@capacitor/core': 8.5.0
 
   '@stablelib/base64@1.0.1': {}
 

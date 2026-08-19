@@ -29,6 +29,8 @@ export async function POST({ request, cookies, platform }) {
 		audience: envPublic.PUBLIC_GOOGLE_OAUTH_CLIENT_ID
 	});
 
+	console.log("Google ID token verified. Payload:", ticket.getPayload());
+
 	const payload = ticket.getPayload();
 	if (!payload) {
 		return new Response(JSON.stringify({ error: 'Invalid ID token' }), { status: 400 });
@@ -101,14 +103,14 @@ export async function POST({ request, cookies, platform }) {
 		path: '/',
 		// httpOnly: true,
 		sameSite: 'strict',
-		// secure: true,
+		secure: request.url.startsWith('https://'),
 		maxAge: 3600
 	});
 	cookies.set('refresh_token', refresh_token, {
 		path: '/',
 		// httpOnly: true,
 		sameSite: 'strict',
-		// secure: true,
+		secure: request.url.startsWith('https://'),
 		maxAge: 3600
 	});
 	// TODO: re-add audit logging once a `logs` table exists in the schema.

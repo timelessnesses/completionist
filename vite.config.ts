@@ -1,6 +1,7 @@
 import tailwindcss from '@tailwindcss/vite';
-import adapter from '@sveltejs/adapter-cloudflare';
+import adapter from '@joshthomas/sveltekit-adapter-cloudflare';
 import { sveltekit } from '@sveltejs/kit/vite';
+import adapterOriginal from "@sveltejs/adapter-cloudflare"
 import { defineConfig } from 'vite';
 import { execSync } from 'child_process';
 import cloudflareDo from "sveltekit-cloudflare-do"
@@ -34,5 +35,8 @@ export default defineConfig({
 				"src/lib/durable_objects/GlobalWS.ts"
 			]
 		})
-	]
+	],
+	build: {
+		sourcemap: true
+	}
 });

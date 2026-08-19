@@ -48,7 +48,22 @@
 			"tag": "v1",
 			"new_sqlite_classes": ["GlobalWS"]
 		}
-	]
+	],
+	"queues": {
+		"consumers": [
+			{
+				"queue": "COMPLETIONIST_QUEUE",
+				"max_batch_size": 10,
+				"max_retries": 5
+			}
+		],
+		"producers": [
+			{
+				"queue": "COMPLETIONIST_QUEUE",
+				"binding": "COMPLETIONIST_QUEUE"
+			}
+		]
+	}
 
 	/**
 	 * Smart Placement

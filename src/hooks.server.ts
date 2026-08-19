@@ -13,7 +13,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const env = event.platform?.env as Env;
 	const token = event.cookies.get('token');
 	let refresh_token = event.cookies.get('refresh_token') || "";
-	const db = getDb(event.platform?.env.COMPLETIONIST_DB as D1Database);
+	const db = getDb(env.COMPLETIONIST_DB as D1Database);
 	if (token) {
 		try {
 			const user = await verifyJWT(token, env);
@@ -29,7 +29,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			let db: ReturnType<typeof getDb> | undefined;
 			if (error instanceof JWTExpired && refresh_token) {
 				try {
-					db = getDb(event.platform?.env.COMPLETIONIST_DB as D1Database);
+					db = getDb(env.COMPLETIONIST_DB as D1Database);
 					user_data = await db.query.user.findFirst({
 						where: and(eq(user.refresh_token, await hashString(refresh_token)), gt(user.refresh_token_expiration, new Date())),
 						with: {

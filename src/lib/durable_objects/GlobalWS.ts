@@ -38,7 +38,6 @@ type PossibleRequest = LoginRequest | OnlineUsersRequest | UserSendsMessageReque
 
 export class GlobalWS extends DurableObject { 
     state: DurableObjectState;
-    sessions: Map<WebSocket, { user_id: string }>;
     env: Env;
     db: ReturnType<typeof getDb>;
 
@@ -47,7 +46,6 @@ export class GlobalWS extends DurableObject {
         super(state, env);
         console.log("GlobalWS constructor finished");
         this.state = state;
-        this.sessions = new Map();
         this.env = env;
         console.log("GlobalWS constructor finished, initializing db");
         this.db = getDb(env.COMPLETIONIST_DB);
@@ -69,29 +67,34 @@ export class GlobalWS extends DurableObject {
         const data = JSON.parse(message.toString()) as PossibleRequest;
         if (data.type === 'login') {
             const { user_id } = await verifyJWT(data.jwt, this.env);
-            this.sessions.set(ws, { user_id });
             ws.send(JSON.stringify({ type: 'user_connected', user_id }));
-        } else if (data.type === 'online_users') {
-            ws.send(JSON.stringify({ type: 'online_users', users: Array.from(this.sessions.values()).map(session => session.user_id) }));
-        } else if (data.type === 'user_sends_message') {
-            this.sessions.entries().find(([socket, session]) => {
-                return session.user_id === data.user_id && socket !== ws;
-            })?.[0].send(JSON.stringify({ type: 'user_message', user_id: data.user_id, message: data.message }));
-        } else if (data.type === 'echo') {
-            ws.send(JSON.stringify({ type: 'echoResponse', content: data.content }));
-            console.log('Echo request received.');
-        } else if (data.type === 'ping') {
-            const calledWhen = Date.now();
-            ws.send(JSON.stringify({ type: 'pong', latency: calledWhen - data.calledWhen }));
+            ws.serializeAttachment({ user_id });
+        } else if (ws.deserializeAttachment()?.user_id) { 
+            if (data.type === 'online_users') {
+                ws.send(JSON.stringify({
+                    type: 'online_users', users: Array.from(this.ctx.getWebSockets().map((a) => {
+                    return a.deserializeAttachment() as { user_id: string };
+                })).map(session => session.user_id) }));
+            } else if (data.type === 'user_sends_message') {
+                this.ctx.getWebSockets().find((socket) => {
+                    const session = socket.deserializeAttachment() as { user_id: string };
+                    return session.user_id === data.user_id && socket !== ws;
+                })?.send(JSON.stringify({ type: 'user_message', user_id: data.user_id, message: data.message }));
+            } else if (data.type === 'echo') {
+                ws.send(JSON.stringify({ type: 'echoResponse', content: data.content }));
+                console.log('Echo request received.');
+            }
+        }  else if (data.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong', calledArrived: Date.now(), calledWhen: data.calledWhen }));
         }
     }
 
     async webSocketClose(ws: WebSocket, code: number, reason: string, _: boolean): Promise<void> {
-        ws.close(code, reason);
-        const user_id = this.sessions.get(ws);
+        const user_id = ws.deserializeAttachment()?.user_id;
         if (user_id) {
-            this.sessions.delete(ws);
-            this.sessions.forEach((_, socket) => {
+            ws.serializeAttachment(null);
+            this.ctx.getWebSockets().forEach((socket) => {
+                if (socket.deserializeAttachment()?.user_id === user_id) return;
                 socket.send(JSON.stringify({ type: 'user_disconnected', user_id }));
             });
         }
