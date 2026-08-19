@@ -14,9 +14,8 @@
 		peopleOpen = false;
 	}
 
-	const data: PageProps = $props();
-	const event = data.event;
-	
+	const { data }: PageProps = $props();
+	const { event: events, upcoming, filters } = data;
 </script>
 
 <svelte:head>
@@ -35,10 +34,10 @@
 		<button class="close" aria-label="Close menu" onclick={closeAll}>
 			<MdiIcon path={mdiClose} size={20} />
 		</button>
-		<SideRail />
+		<SideRail {events} {upcoming}/>
 	</div>
 
-	<MonthView onMenu={() => (railOpen = true)} onPeople={() => (peopleOpen = true)} />
+	<MonthView onMenu={() => (railOpen = true)} onPeople={() => (peopleOpen = true)} {filters} {events} />
 
 	<div class="dock right" class:open={peopleOpen}>
 		<button class="close" aria-label="Close people panel" onclick={closeAll}>

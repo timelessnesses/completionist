@@ -3,17 +3,11 @@
 // Everything the UI renders comes from this file.
 // ============================================================
 
-import type { Color } from "$lib/server/db/schema";
+import type { Color, task_tag } from "$lib/server/db/schema";
+import { task } from "$lib/server/db/schema";
+import type { InferSelectModel } from "drizzle-orm";
 
-
-export interface CalendarEvent {
-	id: string;
-	title: string;
-	/** ISO date: yyyy-mm-dd */
-	date: string;
-	time?: string;
-	color: Color;
-}
+export type CalendarEvent = InferSelectModel<typeof task>;
 
 export interface Person {
 	id: string;
@@ -22,8 +16,4 @@ export interface Person {
 	status?: 'Active' | 'Offline';
 }
 
-export interface FilterTag {
-	id: string;
-	label: string;
-	color: string;
-}
+export type FilterTag = InferSelectModel<typeof task_tag>;

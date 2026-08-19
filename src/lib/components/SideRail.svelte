@@ -6,7 +6,7 @@
 	import MiniMonth from './MiniMonth.svelte';
 	import UpcomingList from './UpcomingList.svelte';
 	import type { CalendarEvent } from '$lib/mock/data';
-
+	
 	const { events, upcoming }: { events: CalendarEvent[], upcoming: CalendarEvent[] } = $props();
 </script>
 

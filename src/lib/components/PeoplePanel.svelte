@@ -5,11 +5,24 @@
 	import Paper from '@smui/paper';
 	import { mdiShareVariantOutline, mdiCogOutline, mdiPlus, mdiMinus } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
+	import type { Person } from '$lib/mock/data';
+	import { getWS } from '$lib/websocket.svelte';
+	import { onMount } from 'svelte';
+	const people: Person[] = [];
+
+	onMount(() => {
+		getWS().addEventListener("message", (e) => {
+			const data = JSON.parse(e.data);
+			if (data.type === 'people') {
+				people.push(...data.people);
+			}
+		})
+	});
 </script>
 
 <aside class="panel">
 	<header class="head">
-		<span class="title">PEOPLE ({people.length}) ({capacity})</span>
+		<span class="title">PEOPLE ({people.length})</span>
 		<span class="actions">
 			<Button variant="unelevated" class="share-btn" onclick={() => alert('TODO: share dialog')}>
 				<MdiIcon path={mdiShareVariantOutline} size={15} />
@@ -28,41 +41,13 @@
 				<LText>
 					<span class="pname">{p.name}</span>
 					<span class="prole">
-						{p.role}{p.owner ? ' · Owner' : ''} ·
+						{p.owner ? ' · Owner' : ''} ·
 						<span class="active">{p.status}</span>
 					</span>
 				</LText>
 			</Item>
 		{/each}
 	</List>
-
-	<div class="waiting-head">
-		<span>Waiting ({waiting.length})</span>
-		<button class="approve-all" onclick={approveAll}>Approve all</button>
-	</div>
-
-	<div class="waiting">
-		{#each waiting as p (p.id)}
-			<div class="wrow">
-				<span class="pname">{p.name}</span>
-				<span class="wactions">
-					<IconButton size="mini" class="wbtn" onclick={() => reject(p.id)}>
-						<MdiIcon path={mdiMinus} size={16} />
-					</IconButton>
-					<IconButton size="mini" class="wbtn" onclick={() => approve(p.id)}>
-						<MdiIcon path={mdiPlus} size={16} />
-					</IconButton>
-				</span>
-			</div>
-		{/each}
-	</div>
-
-	<Paper class="settings-card">
-		<strong>Sharing Settings</strong>
-		<p>
-			Anyone with the link can view. Only some role and owner can invite people in.
-		</p>
-	</Paper>
 </aside>
 
 <style>
