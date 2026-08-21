@@ -2,7 +2,7 @@
 	import IconButton from '@smui/icon-button';
 	import { mdiChevronLeft, mdiChevronRight } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
-	import { WEEKDAYS_NARROW, MONTHS, buildMonthGrid, isSameDay, addMonths } from '$lib/calendar';
+	import { WEEKDAYS_NARROW, MONTHS, buildMonthGrid, isSameDay, addMonths, toKey } from '$lib/calendar';
 	import type { CalendarEvent } from '$lib/mock/data';
 
 	let {
@@ -15,6 +15,47 @@
 	let selected = $state(new Date());
 
 	const cells = $derived(buildMonthGrid(cursor.getFullYear(), cursor.getMonth()));
+
+	// Map of date-key -> info about events touching that date.
+	type Marker = { single: boolean; span: boolean; color: string };
+	const markers = $derived.by(() => {
+		const map = new Map<string, Marker>();
+		for (const ev of events) {
+			const start = new Date(ev.start_at);
+			const end = new Date(ev.end_at);
+			const startKey = toKey(start);
+			const endKey = toKey(end);
+
+			// Normalize color to a css hex string.
+			const c = ev.color;
+			const hex =
+				typeof c === 'object' && c !== null && 'r' in c
+					? `#${[c.r, c.g, c.b].map((n) => (n as number).toString(16).padStart(2, '0')).join('')}`
+					: '#0b57d0';
+
+			if (startKey === endKey) {
+				const prev = map.get(startKey) ?? { single: false, span: false, color: hex };
+				prev.single = true;
+				prev.color = hex;
+				map.set(startKey, prev);
+			} else {
+				// Multi-day event: mark every day it touches as a "span" (rendered as a line).
+				const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+				const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+				let guard = 0;
+				while (day <= last && guard++ < 400) {
+					const k = toKey(day);
+					const prev = map.get(k) ?? { single: false, span: false, color: hex };
+					prev.span = true;
+					prev.color = hex;
+					map.set(k, prev);
+					day.setDate(day.getDate() + 1);
+				}
+			}
+		}
+		return map;
+	});
+
 </script>
 
 <div class="mini">
@@ -35,6 +76,7 @@
 			<span class="dow">{d}</span>
 		{/each}
 		{#each cells as cell (cell.key)}
+			{@const mark = markers.get(cell.key)}
 			<button
 				class="day"
 				class:dim={!cell.inMonth}
@@ -42,11 +84,19 @@
 				class:today={isSameDay(cell.date, new Date())}
 				onclick={() => (selected = cell.date)}
 			>
-				{cell.date.getDate()}
+				<span class="num">{cell.date.getDate()}</span>
+				{#if mark}
+					{#if mark.span}
+						<span class="mark line" style:background={mark.color}></span>
+					{:else if mark.single}
+						<span class="mark dot" style:background={mark.color}></span>
+					{/if}
+				{/if}
 			</button>
 		{/each}
 	</div>
 </div>
+
 
 <style>
 	.mini { padding: 0 8px; }
@@ -62,11 +112,20 @@
 	}
 	.dow { font-size: 10px; color: #5f6368; padding: 4px 0; }
 	.day {
+		position: relative;
 		border: 0; background: none; cursor: pointer;
 		font-size: 11px; color: #1f1f1f;
 		height: 26px; width: 26px; margin: 0 auto;
-		border-radius: 50%; display: grid; place-items: center;
+		border-radius: 50%;
+		display: flex; flex-direction: column; align-items: center; justify-content: center;
+		gap: 1px; line-height: 1;
 	}
+	.num { line-height: 1; }
+	.mark { display: block; }
+	.mark.dot { width: 4px; height: 4px; border-radius: 50%; }
+	.mark.line { width: 14px; height: 3px; border-radius: 2px; }
+	.day.selected .mark, .day.today:not(.selected) .mark { background: currentColor !important; }
+
 	.day:hover { background: #f0f4f9; }
 	.day.dim { color: #9aa0a6; }
 	.day.selected { background: #0b57d0; color: #fff; font-weight: 600; }

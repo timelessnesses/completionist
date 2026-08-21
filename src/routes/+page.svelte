@@ -3,11 +3,14 @@
 	import MonthView from '$lib/components/MonthView.svelte';
 	import PeoplePanel from '$lib/components/PeoplePanel.svelte';
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
+	import CreateEventDialog from '$lib/components/CreateEventDialog.svelte';
 	import { mdiPlus, mdiClose } from '@mdi/js';
 	import type { PageProps } from './$types';
+	import type { CalendarEvent } from '$lib/mock/data';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
+	let createOpen = $state(false);
 
 	function closeAll() {
 		railOpen = false;
@@ -15,7 +18,13 @@
 	}
 
 	const { data }: PageProps = $props();
-	const { event: events, upcoming, filters } = data;
+	let events = $state<CalendarEvent[]>(data.event);
+	const upcoming = $derived(events.filter((t) => t.start_at > new Date()));
+	const { filters } = data;
+
+	function onCreated(ev: CalendarEvent) {
+		events = [...events, ev];
+	}
 </script>
 
 <svelte:head>
@@ -34,7 +43,7 @@
 		<button class="close" aria-label="Close menu" onclick={closeAll}>
 			<MdiIcon path={mdiClose} size={20} />
 		</button>
-		<SideRail {events} {upcoming}/>
+		<SideRail {events} {upcoming} onCreate={() => (createOpen = true)} />
 	</div>
 
 	<MonthView onMenu={() => (railOpen = true)} onPeople={() => (peopleOpen = true)} {filters} {events} />
@@ -43,7 +52,7 @@
 		<button class="close" aria-label="Close people panel" onclick={closeAll}>
 			<MdiIcon path={mdiClose} size={20} />
 		</button>
-		<PeoplePanel />
+		<PeoplePanel isOwner={data.isOwner} />
 	</div>
 
 	{#if railOpen || peopleOpen}
@@ -53,10 +62,12 @@
 	<button
 		class="fab"
 		aria-label="Create event"
-		onclick={() => alert('TODO: open create-event dialog')}
+		onclick={() => (createOpen = true)}
 	>
 		<MdiIcon path={mdiPlus} size={26} />
 	</button>
+
+	<CreateEventDialog bind:open={createOpen} onevent={onCreated} />
 </div>
 
 <style>

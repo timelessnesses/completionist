@@ -6,9 +6,9 @@
 		isSameDay,
 		addDays,
 		startOfWeek,
-		hourLabel,
-		parseTimeToMinutes
+		hourLabel
 	} from '$lib/calendar';
+
 	import { type CalendarEvent } from '$lib/mock/data';
 
 	let { viewDate, events }: { viewDate: Date; events: CalendarEvent[] } = $props();
@@ -17,20 +17,27 @@
 
 	const weekStart = $derived(startOfWeek(viewDate));
 	const days = $derived(Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)));
-	const eventsByDay = $derived(Map.groupBy(events, (e) => e.date));
+	const eventsByDay = $derived(Map.groupBy(events, (e) => toKey(new Date(e.start_at))));
 
 	/** Timed events with a vertical position (as a % of the 24-hour column). */
 	function timedEvents(key: string) {
 		return (eventsByDay.get(key) ?? []).flatMap((ev) => {
-			const start = parseTimeToMinutes(ev.time);
-			return start === null ? [] : [{ ev, top: (start / 1440) * 100 }];
+			if (ev.all_day) return [];
+			const start = new Date(ev.start_at).getHours() * 60 + new Date(ev.start_at).getMinutes();
+			return [{ ev, top: (start / 1440) * 100 }];
 		});
 	}
 
-	/** Untimed events, rendered in the all-day strip like Google Calendar. */
+	/** All-day events, rendered in the all-day strip like Google Calendar. */
 	function allDayEvents(key: string) {
-		return (eventsByDay.get(key) ?? []).filter((ev) => parseTimeToMinutes(ev.time) === null);
+		return (eventsByDay.get(key) ?? []).filter((ev) => !!ev.all_day);
 	}
+
+	function timeLabel(ev: CalendarEvent): string {
+		const d = new Date(ev.start_at);
+		return `${d.getHours()}:${`${d.getMinutes()}`.padStart(2, '0')}`;
+	}
+
 
 	let rootEl: HTMLElement;
 	let scroller: HTMLDivElement;
@@ -62,10 +69,11 @@
 				{#each days as d (toKey(d))}
 					<div class="ad-col">
 						{#each allDayEvents(toKey(d)) as ev (ev.id)}
-							<button class="ad-ev" style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`} style:color={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`} title={ev.title}>
-								{ev.title}
+							<button class="ad-ev" style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`} style:color={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`} title={ev.task_name}>
+								{ev.task_name}
 							</button>
 						{/each}
+
 					</div>
 				{/each}
 			</div>
@@ -89,10 +97,11 @@
 							style:top={`${t.top}%`}
 							style:background={`rgba(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b}, 0.15)`}
 							style:color={`rgb(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b})`}
-							title={t.ev.title}
+							title={t.ev.task_name}
 						>
-							<span class="ev-title">{t.ev.title}</span>
-							<span class="ev-time">{t.ev.time}</span>
+							<span class="ev-title">{t.ev.task_name}</span>
+							<span class="ev-time">{timeLabel(t.ev)}</span>
+
 						</button>
 					{/each}
 				</div>

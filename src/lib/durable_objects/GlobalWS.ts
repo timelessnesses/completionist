@@ -34,9 +34,15 @@ type Heartbeat = {
     calledWhen: number;
 }
 
-type PossibleRequest = LoginRequest | OnlineUsersRequest | UserSendsMessageRequest | EchoRequest | Heartbeat;
+type PreviewSubscribeRequest = {
+    type: 'preview_subscribe';
+}
 
-export class GlobalWS extends DurableObject { 
+type PossibleRequest = LoginRequest | OnlineUsersRequest | UserSendsMessageRequest | NewCalendarEventRequest | EchoRequest | Heartbeat | PreviewSubscribeRequest;
+
+
+export class GlobalWS extends DurableObject {
+
     state: DurableObjectState;
     env: Env;
     db: ReturnType<typeof getDb>;
@@ -52,10 +58,20 @@ export class GlobalWS extends DurableObject {
         console.log("GlobalWS constructor finished, db initialized");
     }
 
-    async fetch(request: Request): Promise<Response> { 
-    if (request.headers.get("Upgrade") !== "websocket") {
-        return new Response("websocket only!!!!", { status: 426 });
-    }
+    async fetch(request: Request): Promise<Response> {
+        // HTTP broadcast endpoint used by server routes (e.g. event creation).
+        const url = new URL(request.url);
+        if (url.pathname.endsWith('/broadcast') && request.method === 'POST') {
+            const payload = (await request.json()) as { type?: string };
+            if (!payload || !payload.type) {
+                return new Response('missing type', { status: 400 });
+            }
+            this.broadcast(JSON.stringify(payload));
+            return new Response('ok', { status: 200 });
+        }
+        if (request.headers.get("Upgrade") !== "websocket") {
+            return new Response("websocket only!!!!", { status: 426 });
+        }
         console.log("hiii")
         const ws = new WebSocketPair();
         const [client, server] = Object.values(ws);
@@ -63,13 +79,71 @@ export class GlobalWS extends DurableObject {
         return new Response(null, { status: 101, webSocket: client });
     }
 
+    broadcast(message: string, exclude?: WebSocket) {
+        this.ctx.getWebSockets().forEach((socket) => {
+            if (socket === exclude) return;
+            try {
+                socket.send(message);
+            } catch {
+                /* ignore */
+            }
+        });
+    }
+
+    sendCurrentPeople(ws: WebSocket) {
+        this.buildPeople().then((people) => {
+            try {
+                ws.send(JSON.stringify({ type: 'people', people }));
+            } catch {
+                /* ignore */
+            }
+        });
+    }
+
+    broadcastPeople() {
+        this.buildPeople().then((people) => {
+            this.broadcast(JSON.stringify({ type: 'people', people }));
+        });
+    }
+
+
+    async buildPeople() {
+        try {
+            const users = await this.db.query.user.findMany();
+            const onlineIds = new Set(
+                this.ctx
+                    .getWebSockets()
+                    .map((s) => (s.deserializeAttachment() as { user_id?: string } | null)?.user_id)
+                    .filter((x): x is string => typeof x === 'string')
+            );
+            return users.map((u) => ({
+                id: u.id,
+                name: u.name,
+                owner: false,
+                status: onlineIds.has(u.id) ? 'Active' : 'Offline',
+                avatar: u.profile_picture_url
+            }));
+        } catch {
+            return [] as unknown[];
+        }
+    }
+
+
     async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
         const data = JSON.parse(message.toString()) as PossibleRequest;
         if (data.type === 'login') {
             const { user_id } = await verifyJWT(data.jwt, this.env);
             ws.send(JSON.stringify({ type: 'user_connected', user_id }));
             ws.serializeAttachment({ user_id });
+            this.sendCurrentPeople(ws);
+            this.broadcastPeople();
+        } else if (data.type === 'preview_subscribe') {
+            ws.serializeAttachment({ preview: true });
+            ws.send(JSON.stringify({ type: 'preview_subscribed' }));
+        } else if (data.type === 'new_calendar_event') {
+            this.broadcast(JSON.stringify({ type: 'new_calendar_event', event: data.event }), ws);
         } else if (ws.deserializeAttachment()?.user_id) { 
+
             if (data.type === 'online_users') {
                 ws.send(JSON.stringify({
                     type: 'online_users', users: Array.from(this.ctx.getWebSockets().map((a) => {
@@ -97,7 +171,9 @@ export class GlobalWS extends DurableObject {
                 if (socket.deserializeAttachment()?.user_id === user_id) return;
                 socket.send(JSON.stringify({ type: 'user_disconnected', user_id }));
             });
+            this.broadcastPeople();
         }
     }
+
 
 }

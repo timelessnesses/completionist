@@ -7,7 +7,12 @@
 	import UpcomingList from './UpcomingList.svelte';
 	import type { CalendarEvent } from '$lib/mock/data';
 	
-	const { events, upcoming }: { events: CalendarEvent[], upcoming: CalendarEvent[] } = $props();
+	const {
+		events,
+		upcoming,
+		onCreate
+	}: { events: CalendarEvent[]; upcoming: CalendarEvent[]; onCreate?: () => void } = $props();
+
 </script>
 
 <aside class="rail">
@@ -25,7 +30,8 @@
 	</div>
 
 	<div class="create">
-		<Button variant="raised" class="create-btn" onclick={() => alert('TODO: open create-event dialog')}>
+		<Button variant="raised" class="create-btn" onclick={() => onCreate?.()}>
+
 			<MdiIcon path={mdiPlus} size={18} />
 			<Label>Create Event</Label>
 		</Button>
