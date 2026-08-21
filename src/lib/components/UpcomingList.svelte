@@ -1,8 +1,13 @@
 <script lang="ts">
-	import { prettyDate } from '$lib/calendar';
+	import { prettyDate, toKey } from '$lib/calendar';
 	import type { CalendarEvent } from '$lib/mock/data';
 
 	const { upcoming }: { upcoming: CalendarEvent[] } = $props();
+
+	function timeLabel(d: Date): string {
+		return `${d.getHours()}:${`${d.getMinutes()}`.padStart(2, '0')}`;
+	}
+
 </script>
 
 <div class="upcoming">
@@ -12,14 +17,18 @@
 	</div>
 
 	{#each upcoming as ev (ev.id)}
+		{@const start = new Date(ev.start_at)}
 		<button class="card">
 			<span class="bar" style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}></span>
 			<span class="body">
-				<span class="title">{ev.title}</span>
-				<span class="when">{prettyDate(ev.date)}{ev.time ? `, ${ev.time}` : ''}</span>
+				<span class="title">{ev.task_name}</span>
+				<span class="when">
+					{prettyDate(toKey(start))}{ev.all_day ? '' : `, ${timeLabel(start)}`}
+				</span>
 			</span>
 		</button>
 	{/each}
+
 </div>
 
 <style>

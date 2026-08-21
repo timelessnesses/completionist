@@ -23,11 +23,13 @@ export const load = async ({ params, request, platform, locals }) => {
         isOwner = !!owned;
     } */
 
+    const isOwner = locals.user?.admin ?? false;
+
     return {
         event: tasks,
         upcoming: tasks.filter(t => t.start_at > new Date()),
         filters,
-        // isOwner
+        isOwner
     }
 }
 

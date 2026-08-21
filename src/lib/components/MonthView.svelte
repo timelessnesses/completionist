@@ -34,7 +34,15 @@
 	let activeFilters = $state(new Set(filters.map((f) => f.id)));
 
 	const cells = $derived(buildMonthGrid(viewDate.getFullYear(), viewDate.getMonth()));
-	const eventsByDay = $derived(Map.groupBy(events, (e) => e.date));
+	const eventsByDay = $derived(Map.groupBy(events, (e) => {
+		const d = new Date(e.start_at);
+		return `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`;
+	}));
+
+	function colorHex(c: { r: number; g: number; b: number }): string {
+		return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+	}
+
 
 	function step(dir: -1 | 1) {
 		viewDate = view === 'Month' ? addMonths(viewDate, dir) : addDays(viewDate, dir * 7);
@@ -102,8 +110,9 @@
 				class:off={!activeFilters.has(f.id)}
 				onclick={() => toggleFilter(f.id)}
 			>
-				<span class="dot" style:background={f.color}></span>
-				{f.label}
+				<span class="dot" style:background={colorHex(f.color)}></span>
+				{f.tag}
+
 			</button>
 		{/each}
 	</div>
@@ -128,10 +137,10 @@
 							<button
 								class="event"
 								style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
-								// style:color={c.fg}
-								title={ev.title}
+								title={ev.task_name}
 							>
-								{ev.title}
+								{ev.task_name}
+
 							</button>
 						{/each}
 						{#if dayEvents.length > 3}
