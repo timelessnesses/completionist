@@ -1,8 +1,7 @@
 <script lang="ts">
 	import Button, { Label } from '@smui/button';
-	import IconButton from '@smui/icon-button';
 	import List, { Item, Graphic, Text as LText } from '@smui/list';
-	import { mdiShareVariantOutline, mdiCogOutline, mdiShieldCrownOutline, mdiContentCopy, mdiClose, mdiCheck } from '@mdi/js';
+	import { mdiShareVariantOutline, mdiCogOutline, mdiShieldCrownOutline, mdiContentCopy, mdiClose, mdiCheck, mdiLogout, mdiWeatherNight, mdiWhiteBalanceSunny, mdiChevronRight } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import type { Person } from '$lib/mock/data';
 	import { getWS } from '$lib/websocket.svelte';
@@ -12,7 +11,60 @@
 
 	let people: Person[] = $state([]);
 	let shareOpen = $state(false);
+	let settingsOpen = $state(false);
 	let copied = $state(false);
+
+	// ---- Theme ----
+	type Theme = 'system' | 'light' | 'dark';
+	let theme: Theme = $state('system');
+
+	function applyTheme(t: Theme) {
+		const root = document.documentElement;
+		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		const dark = t === 'dark' || (t === 'system' && prefersDark);
+		root.classList.toggle('dark', dark);
+		const light = document.querySelector<HTMLLinkElement>('link[href="/smui.css"]');
+		const darkSheet = document.querySelector<HTMLLinkElement>('link[href="/smui-dark.css"]');
+		if (light && darkSheet) {
+			light.disabled = false;
+			darkSheet.disabled = false;
+			light.media = dark ? 'not all' : 'all';
+			darkSheet.media = dark ? 'all' : 'not all';
+		}
+	}
+
+	function setTheme(t: Theme) {
+		theme = t;
+		try {
+			localStorage.setItem('theme', t);
+		} catch {
+			/* ignore */
+		}
+		applyTheme(t);
+	}
+
+	onMount(() => {
+		let saved: Theme = 'system';
+		try {
+			saved = (localStorage.getItem('theme') as Theme) || 'system';
+		} catch {
+			/* ignore */
+		}
+		setTheme(saved);
+		const mq = window.matchMedia('(prefers-color-scheme: dark)');
+		const onSystem = () => theme === 'system' && applyTheme('system');
+		mq.addEventListener('change', onSystem);
+		return () => mq.removeEventListener('change', onSystem);
+	});
+
+	async function logout() {
+		try {
+			await fetch('/api/auth/logout', { method: 'POST' });
+		} finally {
+			window.location.href = '/login';
+		}
+	}
+
 
 	const shareUrl = $derived(
 		typeof window !== 'undefined' ? `${window.location.origin}/preview` : ''
@@ -92,15 +144,10 @@
 				<MdiIcon path={mdiShareVariantOutline} size={15} />
 				<Label>Share</Label>
 			</Button>
-			{#if isOwner}
-				<IconButton href="/admin/" title="Admin">
-					<MdiIcon path={mdiShieldCrownOutline} size={20} />
-				</IconButton>
-			{:else}
-				<IconButton title="Settings">
-					<MdiIcon path={mdiCogOutline} size={20} />
-				</IconButton>
-			{/if}
+			<button class="icon-btn" title="Settings" aria-label="Open settings" onclick={() => (settingsOpen = true)}>
+				<MdiIcon path={mdiCogOutline} size={20} />
+			</button>
+
 		</span>
 	</header>
 
@@ -140,7 +187,72 @@
 	</div>
 {/if}
 
+{#if settingsOpen}
+	<button class="scrim" aria-label="Close settings" onclick={() => (settingsOpen = false)}></button>
+	<div class="share-dialog" role="dialog" aria-modal="true" aria-label="Settings">
+		<header class="share-head">
+			<h2>Settings</h2>
+			<button class="x" aria-label="Close" onclick={() => (settingsOpen = false)}>
+				<MdiIcon path={mdiClose} size={18} />
+			</button>
+		</header>
+
+		<div class="settings-body">
+			<!-- Theme -->
+			<div class="setting-row">
+				<span class="setting-label">Theme</span>
+				<div class="seg">
+					<button
+						class:active={theme === 'system'}
+						onclick={() => setTheme('system')}
+					>
+						<MdiIcon path={mdiCogOutline} size={16} />
+						System
+					</button>
+					<button
+						class:active={theme === 'light'}
+						onclick={() => setTheme('light')}
+					>
+						<MdiIcon path={mdiWhiteBalanceSunny} size={16} />
+						Light
+					</button>
+					<button
+						class:active={theme === 'dark'}
+						onclick={() => setTheme('dark')}
+					>
+						<MdiIcon path={mdiWeatherNight} size={16} />
+						Dark
+					</button>
+				</div>
+			</div>
+
+			<!-- Admin link (owners only) -->
+			{#if isOwner}
+				<a class="setting-action" href="/admin/">
+					<span class="setting-ic"><MdiIcon path={mdiShieldCrownOutline} size={20} /></span>
+					<span class="setting-text">
+						<span class="setting-title">Admin dashboard</span>
+						<span class="setting-sub">Manage the workspace</span>
+					</span>
+					<MdiIcon path={mdiChevronRight} size={18} />
+				</a>
+			{/if}
+
+			<!-- Logout -->
+			<button class="setting-action danger" onclick={logout}>
+				<span class="setting-ic"><MdiIcon path={mdiLogout} size={20} /></span>
+				<span class="setting-text">
+					<span class="setting-title">Log out</span>
+					<span class="setting-sub">End your session</span>
+				</span>
+				<MdiIcon path={mdiChevronRight} size={18} />
+			</button>
+		</div>
+	</div>
+{/if}
+
 <style>
+
 	.panel {
 		width: 300px; flex-shrink: 0;
 		background: #f8fafd;
@@ -166,7 +278,46 @@
 		height: 30px; padding: 0 12px; text-transform: none; font-size: 12.5px;
 		display: flex; align-items: center; gap: 5px;
 	}
-	.actions :global(.mdc-icon-button) { width: 32px; height: 32px; padding: 6px; color: #444746; }
+	.actions .icon-btn {
+		width: 32px; height: 32px; padding: 6px; color: #444746;
+		border: 0; border-radius: 50%; background: none; cursor: pointer;
+		display: grid; place-items: center;
+	}
+	.actions .icon-btn:hover { background: #eef2f7; }
+
+	/* Settings dialog contents */
+	.settings-body { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+	.setting-row { display: flex; flex-direction: column; gap: 8px; }
+	.setting-label { font-size: 12px; font-weight: 600; color: #444746; }
+	.seg {
+		display: flex; border: 1px solid #c4c7c5; border-radius: 999px; overflow: hidden;
+	}
+	.seg button {
+		flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+		border: 0; background: none; padding: 8px 10px; cursor: pointer;
+		font-size: 12.5px; color: #444746;
+	}
+	.seg button.active { background: #c2e7ff; color: #001d35; font-weight: 600; }
+	.seg button + button { border-left: 1px solid #c4c7c5; }
+
+	.setting-action {
+		display: flex; align-items: center; gap: 12px;
+		border: 1px solid #e1e3e1; border-radius: 12px; background: #fff;
+		padding: 10px 12px; cursor: pointer; text-align: left;
+		color: #1f1f1f; text-decoration: none; font: inherit;
+	}
+	.setting-action:hover { background: #f8fafd; }
+	.setting-ic {
+		width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0;
+		background: #f0f4f9; color: #444746;
+		display: grid; place-items: center;
+	}
+	.setting-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+	.setting-title { font-size: 13.5px; font-weight: 600; }
+	.setting-sub { font-size: 11.5px; color: #444746; }
+	.setting-action.danger .setting-title { color: #a50e0e; }
+	.setting-action.danger .setting-ic { background: #fce8e6; color: #a50e0e; }
+
 
 	.panel :global(.people-list) { background: transparent; padding: 0; }
 	.panel :global(.avatar) {

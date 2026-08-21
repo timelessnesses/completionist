@@ -21,7 +21,7 @@ export async function POST({ request, cookies, platform }) {
 	if (!envPublic.PUBLIC_GOOGLE_OAUTH_CLIENT_ID || !envPrivate.GOOGLE_OAUTH_CLIENT_SECRET) {
 		throw error(400, 'Google OAuth client ID or secret is not set in environment variables.');
 	}
-	const db = getDb(platform?.env.COMPLETIONIST_DB as D1Database);
+	const db = getDb((platform?.env as Env).COMPLETIONIST_DB as D1Database);
 	const { id_token } = (await request.json()) as GoogleJwtRequest;
 
 	const ticket = await client.verifyIdToken({
@@ -68,7 +68,8 @@ export async function POST({ request, cookies, platform }) {
 				name: payload.name || 'Admin',
 				logged_in_when: new Date(),
 				jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
-				refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS)
+				refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS),
+				owner: 1,
 			}).run();
 			const admin_user = await db.query.user.findFirst({ where: eq(user.name, payload.name || 'Admin') });
 			if (!admin_user) {
@@ -97,7 +98,7 @@ export async function POST({ request, cookies, platform }) {
 	const id = await issuingNewSessionToken(
 		resolvedUser,
 		db,
-		turnThisToUint8Array(platform?.env.JWT_SECRET_BASE64 as string),
+		turnThisToUint8Array((platform?.env as Env).JWT_SECRET_BASE64 as string),
 	);
 	cookies.set('token', id, {
 		path: '/',
