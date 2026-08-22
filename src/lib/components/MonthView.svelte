@@ -9,7 +9,6 @@
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import WeekView from './WeekView.svelte';
-	import UpcomingList from './UpcomingList.svelte';
 	import EventDetailsDialog from './EventDetailsDialog.svelte';
 	import {
 		WEEKDAYS,
@@ -29,7 +28,6 @@
 		onPeople,
 		filters,
 		events,
-		upcoming,
 		viewerId,
 		isAdmin,
 		onUpdated,
@@ -39,7 +37,6 @@
 		onPeople?: () => void;
 		filters: FilterTag[];
 		events: CalendarEvent[];
-		upcoming: CalendarEvent[];
 		viewerId: string | null;
 		isAdmin: boolean;
 		onUpdated?: (ev: CalendarEvent) => void;
@@ -211,9 +208,7 @@
 		</div>
 	{/if}
 
-	<div class="upcoming-wrap">
-		<UpcomingList {upcoming} />
-	</div>
+		<!-- Upcoming list removed -->
 
 	<EventDetailsDialog
 		bind:open={detailsOpen}

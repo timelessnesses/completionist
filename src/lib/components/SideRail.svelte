@@ -4,9 +4,14 @@
 	import { mdiPlus, mdiCalendarMonth } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import MiniMonth from './MiniMonth.svelte';
+	import UpcomingList from './UpcomingList.svelte';
 	import type { CalendarEvent } from '$lib/mock/data';
 
-	const { events, onCreate }: { events: CalendarEvent[]; onCreate?: () => void } = $props();
+	const {
+		events,
+		upcoming,
+		onCreate
+	}: { events: CalendarEvent[]; upcoming: CalendarEvent[]; onCreate?: () => void } = $props();
 </script>
 
 <aside class="rail">
@@ -30,6 +35,7 @@
 	</div>
 
 	<MiniMonth {events} />
+	<UpcomingList {upcoming} />
 </aside>
 
 <style>

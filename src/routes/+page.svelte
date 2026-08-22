@@ -35,6 +35,8 @@
 	function onDeleted(id: string) {
 		events = events.filter((x) => x.id !== id);
 	}
+
+	
 </script>
 
 <svelte:head>
@@ -53,11 +55,10 @@
 		<button class="close" aria-label="Close menu" onclick={closeAll}>
 			<MdiIcon path={mdiClose} size={20} />
 		</button>
-		<SideRail {events} onCreate={() => (createOpen = true)} />
+		<SideRail {events} {upcoming} onCreate={() => (createOpen = true)} />
 	</div>
 
 	<MonthView
-		{upcoming}
 		onMenu={() => (railOpen = true)}
 		onPeople={() => (peopleOpen = true)}
 		{filters}
