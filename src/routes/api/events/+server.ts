@@ -34,6 +34,8 @@ export const POST = async ({ request, platform, locals }) => {
 
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 
+	console.log()
+
 	const inserted = await db
 		.insert(task)
 		.values({

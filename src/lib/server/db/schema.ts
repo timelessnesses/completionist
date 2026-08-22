@@ -83,7 +83,7 @@ export const user = sqliteTable('user', {
 	profile_picture_url: text('profile_picture_url'),
 	refresh_token: text('refresh_token'),
 	refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' }),
-	owner: integer('owner').$type<0 | 1>().notNull(),
+	owner: integer('owner').$type<0 | 1>().notNull().default(0),
 });
 
 export const task_assignee = sqliteTable(

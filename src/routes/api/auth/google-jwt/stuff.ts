@@ -1,4 +1,4 @@
-import { user } from "$lib/server/db/schema";
+import { user, user_identities } from "$lib/server/db/schema";
 import { error } from "console";
 import { eq } from "drizzle-orm/sql/expressions/conditions";
 import * as jose from "jose";
@@ -14,10 +14,14 @@ export async function issuingNewSessionToken(
 		throw error(500, 'Shared secret is not set in environment variables.');
 	}
 
-	const sessionToken = await new jose.SignJWT()
+	const sessionToken = await new jose.SignJWT({
+		user_id: resolvedUser.id,
+	})
 		.setIssuedAt()
 		.setExpirationTime('10s')
-		.setSubject(resolvedUser.id)
+		.setSubject((await database.query.user_identities.findFirst({
+			where: eq(user_identities.user_id, resolvedUser.id),
+		}))?.email as string)
 		.setAudience("completionist")
 		.setProtectedHeader({
 			alg: 'HS256',
