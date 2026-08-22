@@ -87,6 +87,7 @@
 		"@joshthomas/sveltekit-adapter-cloudflare": "^0.2.1",
 		"@squareetlabs/capacitor-dont-kill-my-app": "^7.0.0",
 		"concurrently": "^10.0.5",
+		"fcm-cloudflare-workers": "^2.0.1",
 		"google-auth-library": "^11.0.2",
 		"jose": "^6.2.7",
 		"resend": "^6.18.1",

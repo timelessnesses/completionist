@@ -19,6 +19,9 @@
 		"enabled": true
 	},
 	"upload_source_maps": true,
+	"vars": {
+		"FCM_PROJECT_ID": "completionist-6a4af"
+	},
 	"d1_databases": [
 		{
 			"binding": "COMPLETIONIST_DB",
@@ -55,12 +58,48 @@
 				"queue": "completionist-queue",
 				"max_batch_size": 10,
 				"max_retries": 5
+			},
+			{
+				"queue": "websocket-queue",
+				"max_batch_size": 10,
+				"max_retries": 5
+			},
+			{
+				"queue": "webpush-queue",
+				"max_batch_size": 10,
+				"max_retries": 5
+			},
+			{
+				"queue": "email-queue",
+				"max_batch_size": 10,
+				"max_retries": 5
+			},
+			{
+				"queue": "gcm-queue",
+				"max_batch_size": 10,
+				"max_retries": 5
 			}
 		],
 		"producers": [
 			{
 				"queue": "completionist-queue",
 				"binding": "COMPLETIONIST_QUEUE"
+			},
+			{
+				"queue": "websocket-queue",
+				"binding": "WS_QUEUE"
+			},
+			{
+				"queue": "webpush-queue",
+				"binding": "WEBPUSH_QUEUE"
+			},
+			{
+				"queue": "email-queue",
+				"binding": "EMAIL_QUEUE"
+			},
+			{
+				"queue": "gcm-queue",
+				"binding": "GCM_QUEUE"
 			}
 		]
 	}

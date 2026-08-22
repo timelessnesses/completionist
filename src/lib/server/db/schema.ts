@@ -182,6 +182,19 @@ export const push_subscriptions = sqliteTable('push_subs', {
 	p256dh: text('p256dh').notNull()
 });
 
+export const fcm_tokens = sqliteTable('fcm_tokens', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	user_id: text('user_id')
+		.references((): AnySQLiteColumn => user.id)
+		.notNull(),
+	token: text('token').notNull(),
+	created_at: integer('created_at', { mode: 'timestamp_ms' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
 export const issues = sqliteTable('issues', {
 	id: text('id')
 		.primaryKey()
@@ -296,6 +309,7 @@ export const userRelations = relations(user, ({ many }) => ({
 	task_attachments: many(task_attachment),
 	identities: many(user_identities),
 	push_subscriptions: many(push_subscriptions),
+	fcm_tokens: many(fcm_tokens),
 	created_issues: many(issues),
 	issue_comments: many(issue_comments),
 	issue_attachments: many(issue_attachments)
@@ -357,6 +371,13 @@ export const userIdentitiesRelations = relations(user_identities, ({ one }) => (
 export const pushSubscriptionsRelations = relations(push_subscriptions, ({ one }) => ({
 	user: one(user, {
 		fields: [push_subscriptions.user_id],
+		references: [user.id]
+	})
+}));
+
+export const fcmTokensRelations = relations(fcm_tokens, ({ one }) => ({
+	user: one(user, {
+		fields: [fcm_tokens.user_id],
 		references: [user.id]
 	})
 }));
