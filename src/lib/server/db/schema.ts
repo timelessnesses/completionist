@@ -12,7 +12,7 @@ export type Color = {
 	r: number;
 	g: number;
 	b: number;
-}
+};
 
 const colorHexType = customType<{
 	data: Color;
@@ -21,7 +21,7 @@ const colorHexType = customType<{
 	dataType() {
 		return 'text';
 	},
-	fromDriver(value: string): Color { 
+	fromDriver(value: string): Color {
 		if (typeof value === 'string') {
 			const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(value);
 			if (result) {
@@ -34,9 +34,19 @@ const colorHexType = customType<{
 		}
 		throw new Error(`Invalid color hex string: ${value}`);
 	},
-	toDriver(value: Color): string { 
-		if (typeof value === 'object' && value !== null && 'r' in value && 'g' in value && 'b' in value) {
-			if (typeof value.r !== 'number' || typeof value.g !== 'number' || typeof value.b !== 'number') {
+	toDriver(value: Color): string {
+		if (
+			typeof value === 'object' &&
+			value !== null &&
+			'r' in value &&
+			'g' in value &&
+			'b' in value
+		) {
+			if (
+				typeof value.r !== 'number' ||
+				typeof value.g !== 'number' ||
+				typeof value.b !== 'number'
+			) {
 				throw new Error(`Invalid color object: ${value}`);
 			}
 			return `#${numberToHex(value.r)}${numberToHex(value.g)}${numberToHex(value.b)}`;
@@ -56,7 +66,7 @@ export const task = sqliteTable('task', {
 		.$defaultFn(() => crypto.randomUUID()),
 	parent: text('parent').references((): AnySQLiteColumn => task.id),
 	task_name: text('name').notNull(),
-	description: text('description'),	
+	description: text('description'),
 	color: colorHexType('color').notNull(),
 	owner: text('owner')
 		.references((): AnySQLiteColumn => user.id)
@@ -70,7 +80,7 @@ export const task = sqliteTable('task', {
 	// bruv
 	all_day: integer('all_day').notNull().$type<0 | 1>(),
 	// higher importance_value means higher importance
-	importance_value: integer('importance_value').notNull(),
+	importance_value: integer('importance_value').notNull()
 });
 
 export const user = sqliteTable('user', {
@@ -83,7 +93,7 @@ export const user = sqliteTable('user', {
 	profile_picture_url: text('profile_picture_url'),
 	refresh_token: text('refresh_token'),
 	refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' }),
-	owner: integer('owner').$type<0 | 1>().notNull().default(0),
+	owner: integer('owner').$type<0 | 1>().notNull().default(0)
 });
 
 export const task_assignee = sqliteTable(

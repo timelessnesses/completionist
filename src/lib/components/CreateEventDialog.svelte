@@ -85,7 +85,9 @@
 
 			// Notify other clients over the global websocket (best effort).
 			try {
-				getWS()?.send(JSON.stringify({ type: 'new_calendar_event', calendar_id: created.id, event: created }));
+				getWS()?.send(
+					JSON.stringify({ type: 'new_calendar_event', calendar_id: created.id, event: created })
+				);
 			} catch {
 				/* best effort */
 			}
@@ -125,7 +127,13 @@
 			}}
 		>
 			<label class="field title-field">
-				<input class="title-input" type="text" bind:value={title} placeholder="Add title" required />
+				<input
+					class="title-input"
+					type="text"
+					bind:value={title}
+					placeholder="Add title"
+					required
+				/>
 			</label>
 
 			<label class="row">
@@ -196,81 +204,200 @@
 
 <style>
 	.scrim {
-		position: fixed; inset: 0; z-index: 60;
-		border: 0; padding: 0; cursor: default;
+		position: fixed;
+		inset: 0;
+		z-index: 60;
+		border: 0;
+		padding: 0;
+		cursor: default;
 		background: rgba(15, 23, 42, 0.35);
 	}
 
 	/* Desktop: centred dialog */
 	.sheet {
-		position: fixed; z-index: 61;
-		top: 50%; left: 50%; transform: translate(-50%, -50%);
+		position: fixed;
+		z-index: 61;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
 		width: min(480px, calc(100vw - 32px));
 		max-height: calc(100dvh - 64px);
 		overflow-y: auto;
-		background: #fff; border-radius: 16px;
+		background: #fff;
+		border-radius: 16px;
 		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
 		padding: 8px 20px 20px;
 	}
-	.grabber { display: none; }
+	.grabber {
+		display: none;
+	}
 
-	.head { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
-	h2 { margin: 0; font-size: 16px; font-weight: 500; color: #1f1f1f; }
+	.head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 4px 0;
+	}
+	h2 {
+		margin: 0;
+		font-size: 16px;
+		font-weight: 500;
+		color: #1f1f1f;
+	}
 	.icon {
-		display: grid; place-items: center; width: 34px; height: 34px;
-		border: 0; border-radius: 50%; background: none; color: #444746; cursor: pointer;
+		display: grid;
+		place-items: center;
+		width: 34px;
+		height: 34px;
+		border: 0;
+		border-radius: 50%;
+		background: none;
+		color: #444746;
+		cursor: pointer;
 	}
-	.icon:hover { background: #f0f4f9; }
-
-	.body { display: flex; flex-direction: column; gap: 14px; margin-top: 8px; }
-	.field { display: flex; flex-direction: column; gap: 6px; }
-	.field input[type='date'], .field input[type='time'], .field textarea, .title-input {
-		font: inherit; font-size: 13.5px; color: #1f1f1f;
-		border: 1px solid #c4c7c5; border-radius: 8px; padding: 9px 12px;
-		background: #fff; width: 100%;
+	.icon:hover {
+		background: #f0f4f9;
 	}
-	.field textarea { resize: vertical; }
-	.title-input { border: 0; border-bottom: 1px solid #c4c7c5; border-radius: 0; padding: 8px 2px; font-size: 18px; }
-	.title-input:focus { outline: none; border-bottom-color: #0b57d0; border-bottom-width: 2px; }
-	.lbl { font-size: 12px; color: #444746; }
-	.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-	.row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: #1f1f1f; }
 
-	.swatches { display: flex; gap: 8px; }
+	.body {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+		margin-top: 8px;
+	}
+	.field {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.field input[type='date'],
+	.field input[type='time'],
+	.field textarea,
+	.title-input {
+		font: inherit;
+		font-size: 13.5px;
+		color: #1f1f1f;
+		border: 1px solid #c4c7c5;
+		border-radius: 8px;
+		padding: 9px 12px;
+		background: #fff;
+		width: 100%;
+	}
+	.field textarea {
+		resize: vertical;
+	}
+	.title-input {
+		border: 0;
+		border-bottom: 1px solid #c4c7c5;
+		border-radius: 0;
+		padding: 8px 2px;
+		font-size: 18px;
+	}
+	.title-input:focus {
+		outline: none;
+		border-bottom-color: #0b57d0;
+		border-bottom-width: 2px;
+	}
+	.lbl {
+		font-size: 12px;
+		color: #444746;
+	}
+	.grid2 {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 12px;
+	}
+	.row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13.5px;
+		color: #1f1f1f;
+	}
+
+	.swatches {
+		display: flex;
+		gap: 8px;
+	}
 	.swatch {
-		width: 28px; height: 28px; border-radius: 50%;
-		border: 2px solid transparent; cursor: pointer; padding: 0;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		border: 2px solid transparent;
+		cursor: pointer;
+		padding: 0;
 	}
-	.swatch.selected { border-color: #1f1f1f; }
+	.swatch.selected {
+		border-color: #1f1f1f;
+	}
 
-	.err { margin: 0; font-size: 12.5px; color: #a50e0e; }
+	.err {
+		margin: 0;
+		font-size: 12.5px;
+		color: #a50e0e;
+	}
 
-	.foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+	.foot {
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+		margin-top: 4px;
+	}
 	.btn {
-		border: 0; border-radius: 999px; padding: 9px 20px; cursor: pointer;
-		font: inherit; font-size: 13.5px; font-weight: 600;
+		border: 0;
+		border-radius: 999px;
+		padding: 9px 20px;
+		cursor: pointer;
+		font: inherit;
+		font-size: 13.5px;
+		font-weight: 600;
 	}
-	.btn.ghost { background: none; color: #0b57d0; }
-	.btn.ghost:hover { background: #eef2f7; }
-	.btn.primary { background: #0b57d0; color: #fff; }
-	.btn.primary:disabled { opacity: 0.6; cursor: default; }
+	.btn.ghost {
+		background: none;
+		color: #0b57d0;
+	}
+	.btn.ghost:hover {
+		background: #eef2f7;
+	}
+	.btn.primary {
+		background: #0b57d0;
+		color: #fff;
+	}
+	.btn.primary:disabled {
+		opacity: 0.6;
+		cursor: default;
+	}
 
 	/* Mobile: Google-Calendar style bottom sheet that takes the lower space */
 	@media (max-width: 860px) {
 		.sheet {
-			top: auto; bottom: 0; left: 0; transform: none;
-			width: 100%; max-height: 92dvh;
+			top: auto;
+			bottom: 0;
+			left: 0;
+			transform: none;
+			width: 100%;
+			max-height: 92dvh;
 			border-radius: 24px 24px 0 0;
 			padding: 8px 20px calc(20px + env(safe-area-inset-bottom));
 			animation: slide-up 0.22s ease;
 		}
 		.grabber {
-			display: block; width: 36px; height: 4px; border-radius: 999px;
-			background: #c4c7c5; margin: 2px auto 6px;
+			display: block;
+			width: 36px;
+			height: 4px;
+			border-radius: 999px;
+			background: #c4c7c5;
+			margin: 2px auto 6px;
 		}
 	}
 	@keyframes slide-up {
-		from { transform: translateY(24px); opacity: 0.6; }
-		to { transform: translateY(0); opacity: 1; }
+		from {
+			transform: translateY(24px);
+			opacity: 0.6;
+		}
+		to {
+			transform: translateY(0);
+			opacity: 1;
+		}
 	}
 </style>

@@ -4,7 +4,12 @@ import { error } from '@sveltejs/kit';
 import { OAuth2Client } from 'google-auth-library';
 import { user, user_identities } from '$lib/server/db/schema.js';
 import { and, eq } from 'drizzle-orm';
-import { randomBytesToString, hashString, issuingNewSessionToken, turnThisToUint8Array } from './stuff';
+import {
+	randomBytesToString,
+	hashString,
+	issuingNewSessionToken,
+	turnThisToUint8Array
+} from './stuff';
 import { getDb } from '$lib/server/db/index.js';
 import { JWT_EXPIRATION_IN_SECONDS, REFRESH_TOKEN_EXPIRATION_IN_SECONDS } from '$lib/constants';
 
@@ -29,7 +34,7 @@ export async function POST({ request, cookies, platform }) {
 		audience: envPublic.PUBLIC_GOOGLE_OAUTH_CLIENT_ID
 	});
 
-	console.log("Google ID token verified. Payload:", ticket.getPayload());
+	console.log('Google ID token verified. Payload:', ticket.getPayload());
 
 	const payload = ticket.getPayload();
 	if (!payload) {
@@ -42,18 +47,11 @@ export async function POST({ request, cookies, platform }) {
 		return new Response(JSON.stringify({ error: 'Email not verified' }), { status: 400 });
 	}
 
-
 	// Look up the identity for this Google account. A user may have multiple
 	// identities (emails/providers); the email lives on user_identities, not user.
-	const identity = await db.query.user_identities
-		.findFirst(
-			{
-				where: and(
-					eq(user_identities.provider, 'google'),
-					eq(user_identities.email, payload.email)
-				)
-			}
-		);
+	const identity = await db.query.user_identities.findFirst({
+		where: and(eq(user_identities.provider, 'google'), eq(user_identities.email, payload.email))
+	});
 
 	if (!identity && envPrivate.ADMIN_EMAIL !== payload.email) {
 		return new Response(JSON.stringify({ error: 'Student ID not whitelisted' }), { status: 400 });
@@ -63,24 +61,32 @@ export async function POST({ request, cookies, platform }) {
 	if (identity) {
 		resolvedUser = await db.query.user.findFirst({ where: eq(user.id, identity.user_id) });
 	} else {
-		if (envPrivate.ADMIN_EMAIL === payload.email) { 
-			await db.insert(user).values({ 
-				name: payload.name || 'Admin',
-				logged_in_when: new Date(),
-				jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
-				refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS),
-				owner: 1,
-			}).run();
-			const admin_user = await db.query.user.findFirst({ where: eq(user.name, payload.name || 'Admin') });
+		if (envPrivate.ADMIN_EMAIL === payload.email) {
+			await db
+				.insert(user)
+				.values({
+					name: payload.name || 'Admin',
+					logged_in_when: new Date(),
+					jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
+					refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS),
+					owner: 1
+				})
+				.run();
+			const admin_user = await db.query.user.findFirst({
+				where: eq(user.name, payload.name || 'Admin')
+			});
 			if (!admin_user) {
 				throw error(500, 'Admin user not found.');
 			}
-			await db.insert(user_identities).values({ 
-				user_id: admin_user.id,
-				provider: 'google',
-				provider_user_id: payload.email,
-				email: payload.email,
-			}).run();
+			await db
+				.insert(user_identities)
+				.values({
+					user_id: admin_user.id,
+					provider: 'google',
+					provider_user_id: payload.email,
+					email: payload.email
+				})
+				.run();
 			resolvedUser = admin_user;
 		}
 	}
@@ -91,14 +97,18 @@ export async function POST({ request, cookies, platform }) {
 
 	const refresh_token = randomBytesToString(64);
 	const hashed_refresh_token = await hashString(refresh_token);
-	await db.update(user).set({
-		refresh_token: hashed_refresh_token
-	}).where(eq(user.id, resolvedUser.id)).run();
+	await db
+		.update(user)
+		.set({
+			refresh_token: hashed_refresh_token
+		})
+		.where(eq(user.id, resolvedUser.id))
+		.run();
 
 	const id = await issuingNewSessionToken(
 		resolvedUser,
 		db,
-		turnThisToUint8Array((platform?.env as Env).JWT_SECRET_BASE64 as string),
+		turnThisToUint8Array((platform?.env as Env).JWT_SECRET_BASE64 as string)
 	);
 	cookies.set('token', id, {
 		path: '/',
@@ -117,4 +127,3 @@ export async function POST({ request, cookies, platform }) {
 	// TODO: re-add audit logging once a `logs` table exists in the schema.
 	return new Response(JSON.stringify({ success: true }), { status: 200 });
 }
-

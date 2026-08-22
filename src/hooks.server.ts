@@ -1,19 +1,22 @@
 import { verifyJWT } from '$lib/auth';
 import { redirect, type Handle } from '@sveltejs/kit';
 import { JWTExpired } from 'jose/errors';
-import { hashString, issuingNewSessionToken, turnThisToUint8Array } from './routes/api/auth/google-jwt/stuff';
+import {
+	hashString,
+	issuingNewSessionToken,
+	turnThisToUint8Array
+} from './routes/api/auth/google-jwt/stuff';
 import { and, eq, gt, isNotNull, lt } from 'drizzle-orm';
 import { getDb } from '$lib/server/db';
 import { user, user_identities } from '$lib/server/db/schema';
 
 const publicRoutes = ['/login', '/api/auth/google-jwt', '/api/auth/logout', '/api/ws', '/preview'];
 
-
 export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.request_start_time = Date.now();
 	const env = event.platform?.env as Env;
 	const token = event.cookies.get('token');
-	let refresh_token = event.cookies.get('refresh_token') || "";
+	let refresh_token = event.cookies.get('refresh_token') || '';
 	const db = getDb(env.COMPLETIONIST_DB as D1Database);
 	if (token) {
 		try {
@@ -32,7 +35,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 				try {
 					db = getDb(env.COMPLETIONIST_DB as D1Database);
 					user_data = await db.query.user.findFirst({
-						where: and(eq(user.refresh_token, await hashString(refresh_token)), gt(user.refresh_token_expiration, new Date())),
+						where: and(
+							eq(user.refresh_token, await hashString(refresh_token)),
+							gt(user.refresh_token_expiration, new Date())
+						),
 						with: {
 							identities: {
 								where: isNotNull(user_identities.email)
@@ -41,14 +47,18 @@ export const handle: Handle = async ({ event, resolve }) => {
 					});
 				} catch (dbError) {
 					console.error('Error looking up user by refresh token:', dbError);
-					refresh_token = "";
+					refresh_token = '';
 				}
 			}
 
 			if (error instanceof JWTExpired && refresh_token && user_data && db) {
 				console.log('JWT expired, but refresh token is valid. Issuing new session token...');
 				// literally guranteed to exist though...
-				const newJWT = await issuingNewSessionToken(user_data, db, turnThisToUint8Array(env.JWT_SECRET_BASE64 as string));
+				const newJWT = await issuingNewSessionToken(
+					user_data,
+					db,
+					turnThisToUint8Array(env.JWT_SECRET_BASE64 as string)
+				);
 				event.cookies.set('token', newJWT, { path: '/', sameSite: 'strict', maxAge: 3600 });
 				event.locals.user = await verifyJWT(newJWT, env);
 				console.log('New session token issued.');
@@ -67,6 +77,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		return redirect(302, '/login');
 	}
 	return await resolve(event, {
-		transformPageChunk: ({ html }) => html.replace('%server-timing%', `${Date.now() - event.locals.request_start_time}`)
+		transformPageChunk: ({ html }) =>
+			html.replace('%server-timing%', `${Date.now() - event.locals.request_start_time}`)
 	});
 };

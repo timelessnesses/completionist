@@ -3,12 +3,12 @@
 	import { env } from '$env/dynamic/public';
 	import { Capacitor } from '@capacitor/core';
 	import { GoogleSignIn } from '@capawesome/capacitor-google-sign-in';
-	import yes from "$lib/yes.svg"
+	import yes from '$lib/yes.svg';
 
 	async function trySignIn() {
-		console.log("Signing in from native")
-		const result = await GoogleSignIn.signIn()
-		console.log("Result from native sign in", result)
+		console.log('Signing in from native');
+		const result = await GoogleSignIn.signIn();
+		console.log('Result from native sign in', result);
 		fetch('/api/auth/google-jwt', {
 			method: 'POST',
 			headers: {
@@ -33,12 +33,11 @@
 		onMount(async () => {
 			await GoogleSignIn.initialize({
 				clientId: env.PUBLIC_GOOGLE_OAUTH_CLIENT_ID as string,
-				scopes: ['email', 'profile'],
-			})
-			ready = true
+				scopes: ['email', 'profile']
+			});
+			ready = true;
 			await trySignIn();
-		})
-
+		});
 	} else {
 		function handleLoginRequest(response: { credential: string }) {
 			fetch('/api/auth/google-jwt', {
@@ -105,13 +104,17 @@
 </script>
 
 {#if !env.PUBLIC_GOOGLE_OAUTH_CLIENT_ID || !env.PUBLIC_GOOGLE_OAUTH_ANDROID_CLIENT_ID}
-	<p class="text-red-500">Google OAuth client ID (or android version) is not set in environment variables.</p>
+	<p class="text-red-500">
+		Google OAuth client ID (or android version) is not set in environment variables.
+	</p>
 {:else}
 	{#if Capacitor.isNativePlatform()}
-		<button onclick={async () => {
+		<button
+			onclick={async () => {
 				await trySignIn();
-		}}>
-			<img src={yes} alt="Google Sign In Button" style:visibility={ready ? "visible" : "hidden"} />
+			}}
+		>
+			<img src={yes} alt="Google Sign In Button" style:visibility={ready ? 'visible' : 'hidden'} />
 		</button>
 	{:else}
 		<div id="google-button"></div>

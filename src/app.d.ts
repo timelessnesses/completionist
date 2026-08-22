@@ -31,13 +31,15 @@ declare global {
 
 		// interface Error {}
 		interface Locals {
-			user: {
-				email: string;
-				user_id: string;
-				name: string;
-				nickname: string;
-				admin: boolean;
-			} | undefined;
+			user:
+				| {
+						email: string;
+						user_id: string;
+						name: string;
+						nickname: string;
+						admin: boolean;
+				  }
+				| undefined;
 			request_start_time: number;
 		}
 		// interface PageData {}

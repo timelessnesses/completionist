@@ -3,9 +3,9 @@
 // Everything the UI renders comes from this file.
 // ============================================================
 
-import type { Color, task_tag } from "$lib/server/db/schema";
-import { task } from "$lib/server/db/schema";
-import type { InferSelectModel } from "drizzle-orm";
+import type { Color, task_tag } from '$lib/server/db/schema';
+import { task } from '$lib/server/db/schema';
+import type { InferSelectModel } from 'drizzle-orm';
 
 export type CalendarEvent = InferSelectModel<typeof task>;
 

@@ -64,7 +64,9 @@ export const DELETE = async ({ request, platform, locals }) => {
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 	await db
 		.delete(fcm_tokens)
-		.where(and(eq(fcm_tokens.user_id, locals.user.user_id), eq(fcm_tokens.token, body.token.trim())));
+		.where(
+			and(eq(fcm_tokens.user_id, locals.user.user_id), eq(fcm_tokens.token, body.token.trim()))
+		);
 
 	return json({ ok: true });
 };
