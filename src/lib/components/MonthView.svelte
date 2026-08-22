@@ -1,4 +1,4 @@
-﻿<script lang="ts">
+<script lang="ts">
 	import Button from '@smui/button';
 	import {
 		mdiChevronLeft,
@@ -204,7 +204,7 @@
 		</div>
 	{:else}
 		<div class="week-wrap">
-			<WeekView {viewDate} {events} onSelectEvent={openEvent} />
+			<WeekView {viewDate} {events} followCurrentTime={true} onSelectEvent={openEvent} />
 		</div>
 	{/if}
 
@@ -225,7 +225,7 @@
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
-		background: #fff;
+		/* background: #fff; */
 		border-radius: 16px 0 0 0;
 		border-left: 1px solid #e1e3e1;
 		overflow-y: auto;
@@ -245,13 +245,13 @@
 	h1 {
 		font-size: 22px;
 		font-weight: 400;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 		margin: 0;
 	}
 	.toolbar :global(.today-btn) {
 		border-radius: 999px;
 		text-transform: none;
-		color: #444746;
+		/* color: #444746; */
 		border-color: #c4c7c5;
 	}
 	.spacer {
@@ -364,10 +364,15 @@
 	}
 	.daynum {
 		font-size: 12px;
+		line-height: 1;
 		color: #1f1f1f;
 		height: 22px;
 		width: 22px;
-		display: grid;
+		min-width: 22px;
+		max-width: 22px;
+		flex-shrink: 0;
+		box-sizing: border-box;
+		display: inline-grid;
 		place-items: center;
 		border-radius: 50%;
 	}

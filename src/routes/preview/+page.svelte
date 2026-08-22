@@ -318,13 +318,16 @@
 		display: flex;
 		flex-direction: column;
 	}
+
+
+
 	.pane-title {
 		margin: 0 0 8px;
 		font-size: 12px;
 		font-weight: 700;
 		letter-spacing: 0.45px;
 		text-transform: uppercase;
-		color: #5f6368;
+		/* color: #5f6368; */
 	}
 	.grid {
 		flex: 1;
@@ -360,14 +363,19 @@
 		color: #9aa0a6;
 	}
 	.daynum {
-		font-size: 12px;
-		color: #1f1f1f;
-		height: 22px;
-		width: 22px;
-		display: grid;
-		place-items: center;
-		border-radius: 50%;
-	}
+	font-size: 12px;
+	line-height: 22px; /* match height directly instead of relying on place-items */
+	color: #1f1f1f;
+	height: 22px;
+	width: 22px;
+	flex-shrink: 0;
+	box-sizing: border-box;
+	display: inline-flex; /* flex box in both dimensions is more reliably constrained than inline-grid */
+	align-items: center;
+	justify-content: center;
+	border-radius: 50%;
+	aspect-ratio: 1 / 1; /* belt-and-suspenders: forces a true circle regardless of width/height conflicts */
+}
 	.daynum.today {
 		background: #0b57d0;
 		color: #fff;

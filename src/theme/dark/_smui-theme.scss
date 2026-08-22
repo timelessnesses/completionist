@@ -2,6 +2,19 @@
 
 @use '@smui/common/theme/color-palette';
 
+@use '@smui/common/typography/index' as typography;
+
+// Component theme styles
+@use '@smui/button/style' as button;
+@use '@smui/icon-button/style' as icon-button;
+@use '@smui/card/style' as card;
+@use '@smui/chips/style' as chips;
+@use '@smui/list/style' as list;
+@use '@smui/paper/style' as paper;
+@use '@smui/top-app-bar/style' as top-app-bar;
+@use '@smui/circular-progress/style' as circular-progress;
+
+
 // Material colors for the calendar app (Dark).
 @use '@smui/common/theme/index' as theme with (
 	$primary: #7eb2fd,

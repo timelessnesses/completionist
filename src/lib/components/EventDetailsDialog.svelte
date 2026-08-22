@@ -289,7 +289,7 @@
 		margin: 0;
 		font-size: 16px;
 		font-weight: 500;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 	}
 	.icon {
 		display: grid;
@@ -299,7 +299,7 @@
 		border: 0;
 		border-radius: 50%;
 		background: none;
-		color: #444746;
+		/* color: #444746; */
 		cursor: pointer;
 	}
 	.icon:hover {
@@ -321,7 +321,7 @@
 	.field textarea {
 		font: inherit;
 		font-size: 13.5px;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 		border: 1px solid #c4c7c5;
 		border-radius: 8px;
 		padding: 9px 12px;
@@ -333,7 +333,7 @@
 	}
 	.lbl {
 		font-size: 12px;
-		color: #444746;
+		/* color: #444746; */
 	}
 	.grid2 {
 		display: grid;
@@ -345,7 +345,7 @@
 		align-items: center;
 		gap: 8px;
 		font-size: 13.5px;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 	}
 
 	.swatches {
@@ -413,25 +413,25 @@
 	.title {
 		font-size: 20px;
 		font-weight: 600;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 	}
 	.meta {
 		margin: 0;
 		font-size: 13px;
-		color: #5f6368;
+		/* color: #5f6368; */
 	}
 	.desc {
 		margin: 0;
 		font-size: 14px;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 		white-space: pre-wrap;
 	}
 	.desc.mute {
-		color: #9aa0a6;
+		/* color: #9aa0a6; */
 	}
 	.owner-note {
 		margin: 8px 0 0;
 		font-size: 12px;
-		color: #5f6368;
+		/* color: #5f6368; */
 	}
 </style>

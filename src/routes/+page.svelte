@@ -93,7 +93,7 @@
 		height: 100%;
 		min-height: 0;
 		overflow: hidden;
-		background: #f8fafd;
+		/* background: #f8fafd; */
 	}
 
 	/* Global base styles (component-scoped selectors never match html/body). */
@@ -101,8 +101,8 @@
 	:global(body) {
 		margin: 0;
 		height: 100%;
-		background: #f8fafd;
-		color: #1f1f1f;
+		/* background: #f8fafd; */
+		/* color: #1f1f1f; */
 		font-family: 'Google Sans', 'Roboto', 'Segoe UI', Arial, sans-serif;
 		--mdc-theme-primary: #0b57d0;
 		--mdc-theme-secondary: #0b57d0;

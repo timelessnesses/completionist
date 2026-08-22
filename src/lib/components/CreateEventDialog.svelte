@@ -242,7 +242,7 @@
 		margin: 0;
 		font-size: 16px;
 		font-weight: 500;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 	}
 	.icon {
 		display: grid;
@@ -252,7 +252,7 @@
 		border: 0;
 		border-radius: 50%;
 		background: none;
-		color: #444746;
+		/* color: #444746; */
 		cursor: pointer;
 	}
 	.icon:hover {
@@ -276,7 +276,7 @@
 	.title-input {
 		font: inherit;
 		font-size: 13.5px;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 		border: 1px solid #c4c7c5;
 		border-radius: 8px;
 		padding: 9px 12px;
@@ -300,7 +300,7 @@
 	}
 	.lbl {
 		font-size: 12px;
-		color: #444746;
+		/* color: #444746; */
 	}
 	.grid2 {
 		display: grid;
@@ -312,7 +312,7 @@
 		align-items: center;
 		gap: 8px;
 		font-size: 13.5px;
-		color: #1f1f1f;
+		/* color: #1f1f1f; */
 	}
 
 	.swatches {
@@ -328,7 +328,7 @@
 		padding: 0;
 	}
 	.swatch.selected {
-		border-color: #1f1f1f;
+		/* border-color: #1f1f1f; */
 	}
 
 	.err {

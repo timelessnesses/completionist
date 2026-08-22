@@ -143,13 +143,11 @@
 	.mini-title {
 		font-size: 14px;
 		font-weight: 500;
-		color: #1f1f1f;
 	}
 	.mini-nav :global(.mdc-icon-button) {
 		width: 28px;
 		height: 28px;
 		padding: 4px;
-		color: #5f6368;
 	}
 	.mini-grid {
 		display: grid;
@@ -159,7 +157,6 @@
 	}
 	.dow {
 		font-size: 10px;
-		color: #5f6368;
 		padding: 4px 0;
 	}
 	.day {
@@ -168,7 +165,6 @@
 		background: none;
 		cursor: pointer;
 		font-size: 11px;
-		color: #1f1f1f;
 		height: 28px;
 		width: 100%;
 		margin: 0;
@@ -222,11 +218,11 @@
 		background: #f0f4f9;
 	}
 	.day.dim {
-		color: #9aa0a6;
+		/* color: #9aa0a6; */
 	}
 	.day.selected .num-bubble {
 		background: #0b57d0;
-		color: #fff;
+		/* color: #fff; */
 		font-weight: 600;
 	}
 	.day.today:not(.selected) .num-bubble {

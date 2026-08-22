@@ -47,7 +47,7 @@
 		gap: 16px;
 		padding: 12px 0;
 		overflow-y: auto;
-		background: #f8fafd;
+		background: var(--color-background);
 	}
 	.brand {
 		display: flex;
@@ -59,32 +59,32 @@
 		width: 32px;
 		height: 32px;
 		border-radius: 8px;
-		background: #0b57d0;
-		color: #fff;
+		background: var(--color-primary);
+		color: var(--color-primary-foreground);
 		display: grid;
 		place-items: center;
 	}
 	.app {
 		font-size: 15px;
 		font-weight: 600;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
-	.brand :global(.ws-chip) {
-		background: #e9eef6;
+		.brand :global(.ws-chip) {
+			background: var(--color-muted);
 		height: 24px;
 		border-radius: 8px;
 		font-size: 12px;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
 	.create {
 		padding: 0 16px;
 	}
-	.create :global(.create-btn) {
-		width: 100%;
-		border-radius: 12px;
-		height: 44px;
-		background: #0b57d0;
-		color: #fff;
+		.create :global(.create-btn) {
+			width: 100%;
+			border-radius: 12px;
+			height: 44px;
+			background: var(--color-primary);
+			color: var(--color-primary-foreground);
 		display: flex;
 		align-items: center;
 		gap: 8px;

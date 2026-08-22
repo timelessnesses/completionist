@@ -8,7 +8,7 @@
 		viewDate,
 		events,
 		windowHours = 24,
-		followCurrentTime = false,
+		followCurrentTime,
 		onSelectEvent
 	}: {
 		viewDate: Date;
@@ -18,9 +18,22 @@
 		onSelectEvent?: (ev: CalendarEvent) => void;
 	} = $props();
 
+	let colWidthPx = $state<number | null>(null);
+	let measureRowEl: HTMLElement;
+
+	function measureColumns() {
+		if (!measureRowEl) return;
+		const cols = measureRowEl.querySelectorAll<HTMLElement>('.dhead');
+		if (cols.length > 0) {
+			colWidthPx = cols[0].getBoundingClientRect().width;
+		}
+	}
+
 	const HOURS = Array.from({ length: 24 }, (_, h) => h);
 	const MS_PER_MINUTE = 60_000;
 	const MINUTES_PER_DAY = 1_440;
+
+	const followEnabled = $derived(followCurrentTime ?? true);
 
 	const weekStart = $derived(startOfWeek(viewDate));
 	const days = $derived(Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)));
@@ -47,7 +60,7 @@
 	let hourPx = $state(52);
 
 	const visibleHours = $derived(Math.min(Math.max(windowHours, 1), 24));
-	const useCompactWindow = $derived(followCurrentTime && visibleHours < 24);
+	const useCompactWindow = $derived(followEnabled && visibleHours < 24);
 	const bodyViewportHeight = $derived(visibleHours * hourPx);
 	const centerLineTopPx = $derived(bodyViewportHeight / 2);
 	const compactOffsetPx = $derived.by(() => {
@@ -88,24 +101,115 @@
 		return `${d.getHours()}:${`${d.getMinutes()}`.padStart(2, '0')}`;
 	}
 
+	/** Current-time "now" line vertical position (px) within the 24-hour grid. */
+	const nowLineTopPx = $derived.by(() => {
+		const now = new Date(nowMs);
+		const minutes =
+			now.getHours() * 60 +
+			now.getMinutes() +
+			now.getSeconds() / 60 +
+			now.getMilliseconds() / MS_PER_MINUTE;
+		return (minutes / MINUTES_PER_DAY) * 24 * hourPx;
+	});
+
 	let rootEl: HTMLElement;
+
+	// ---- Auto-follow scroll ----
+	/** Track whether the user has manually scrolled away (interrupted the follow). */
+	let userInterrupted = $state(false);
+	/** Re-arm follow after this much inactivity (ms). */
+	const FOLLOW_REARM_MS = 5_000;
+	let rearmTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Guard so programmatic scrolls don't count as user interruption. */
+	let suppressScrollEvent = false;
+
+	/** Find the closest scrollable ancestor of an element. */
+	function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
+		let node = el?.parentElement ?? null;
+		while (node) {
+			const style = getComputedStyle(node);
+			const oy = style.overflowY;
+			if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) {
+				return node;
+			}
+			node = node.parentElement;
+		}
+		return null;
+	}
+
+	function handleUserScroll() {
+		if (suppressScrollEvent) return;
+		userInterrupted = true;
+		if (rearmTimer) clearTimeout(rearmTimer);
+		rearmTimer = setTimeout(() => {
+			userInterrupted = false;
+		}, FOLLOW_REARM_MS);
+	}
+
+	let scroller: HTMLElement | null = null;
+	let bodyViewportEl: HTMLElement | null = null;
+	/** True when we fall back to scrolling our own viewport (no outer scroller). */
+	let selfScroll = $state(false);
+
+	function scrollToLine(behavior: ScrollBehavior = 'auto') {
+		if (!followEnabled || userInterrupted || !rootEl || !scroller) return;
+		// Position the now-line ~40% from the top of the visible area.
+		const target = rootEl.offsetTop - scroller.offsetTop + nowLineTopPx - scroller.clientHeight * 0.4;
+		const clamped = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
+		suppressScrollEvent = true;
+		scroller.scrollTo({ top: clamped, behavior });
+		// Release suppression after the (possibly smooth) scroll settles.
+		requestAnimationFrame(() => {
+			suppressScrollEvent = false;
+		});
+	}
 
 	onMount(() => {
 		hourPx = parseFloat(getComputedStyle(rootEl).getPropertyValue('--hour-h')) || 52;
-		if (!followCurrentTime) {
-			nowMs = new Date().setHours(7, 0, 0, 0);
+
+		// Prefer scrolling a scrollable ancestor (e.g. the main page). If none
+		// exists (e.g. the preview page), fall back to scrolling our own body
+		// viewport so the week stays usable and follows the time line.
+		scroller = scrollParentOf(rootEl);
+		if (!scroller && bodyViewportEl) {
+			selfScroll = true;
+			scroller = bodyViewportEl;
 		}
+		if (scroller && followEnabled) {
+			scroller.addEventListener('scroll', handleUserScroll, { passive: true });
+			// Initial snap to the current-time line.
+			scrollToLine('auto');
+		}
+
 		const timer = setInterval(() => {
 			nowMs = Date.now();
 		}, 50);
-		return () => clearInterval(timer);
+
+		measureColumns();
+		const ro = new ResizeObserver(() => measureColumns());
+		ro.observe(measureRowEl);
+
+		return () => {
+			clearInterval(timer);
+			if (rearmTimer) clearTimeout(rearmTimer);
+			scroller?.removeEventListener('scroll', handleUserScroll);
+			ro.disconnect();
+		};
+	});
+
+	// Keep following the line as time advances (unless the user interrupted).
+	$effect(() => {
+		// Re-run on nowLineTopPx changes.
+		void nowLineTopPx;
+		if (!followEnabled || userInterrupted) return;
+		scrollToLine('auto');
 	});
 </script>
 
-<div class="week" bind:this={rootEl}>
+<div class="week" bind:this={rootEl} style:--col-w={colWidthPx ? `${colWidthPx}px` : null}>
 	<div class="sticky">
 		<!-- Day headers -->
-		<div class="band head-row">
+		<div class="band head-row" bind:this={measureRowEl}>
 			<div class="gutter"></div>
 			{#each days as d (toKey(d))}
 				<div class="dhead">
@@ -140,12 +244,22 @@
 	<div
 		class="body-viewport"
 		class:compact={useCompactWindow}
-		style={`height: ${useCompactWindow ? bodyViewportHeight : 24 * hourPx}px`}
+		class:scrollable={selfScroll}
+		bind:this={bodyViewportEl}
+		style={`height: ${useCompactWindow ? bodyViewportHeight : selfScroll ? '100%' : 24 * hourPx + 'px'}`}
 	>
 		{#if useCompactWindow}
 			<div class="midline" style={`top: ${centerLineTopPx}px`}></div>
 		{/if}
-		<div class="body-shift" style:transform={`translateY(${compactOffsetPx}px)`}>
+		<div
+			class="body-shift"
+			class:selfscroll={selfScroll}
+			style:transform={`translateY(${compactOffsetPx}px)`}
+			style:height={selfScroll ? `${24 * hourPx}px` : undefined}
+		>
+			{#if followEnabled && !useCompactWindow}
+				<div class="nowline" style={`top: ${nowLineTopPx}px`}></div>
+			{/if}
 			<div class="band body">
 				<div class="gutter labels">
 					{#each HOURS as h}
@@ -183,6 +297,7 @@
 		--gutter-w: 46px;
 		flex: 1;
 		min-height: 0;
+		min-width: 0;
 		display: flex;
 		flex-direction: column;
 		border-top: 1px solid #e1e3e1;
@@ -193,10 +308,13 @@
 		top: 0;
 		z-index: 5;
 		background: #fff;
+		scrollbar-gutter: stable;
 	}
 	.band {
 		display: grid;
-		grid-template-columns: var(--gutter-w) repeat(7, 1fr);
+		grid-template-columns: var(--gutter-w) repeat(7, var(--col-w, 1fr));
+		width: 100%;
+		box-sizing: border-box;
 	}
 	.head-row {
 		border-bottom: 1px solid #e1e3e1;
@@ -217,11 +335,15 @@
 	.dnum {
 		height: 30px;
 		width: 30px;
-		display: grid;
-		place-items: center;
+		flex-shrink: 0;
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		justify-content: center;
 		border-radius: 50%;
 		font-size: 15px;
 		color: #1f1f1f;
+		aspect-ratio: 1 / 1;
 	}
 	.dnum.today {
 		background: #0b57d0;
@@ -277,11 +399,22 @@
 		overflow: hidden;
 		border-bottom: 1px solid #e1e3e1;
 	}
+	.body-viewport.scrollable {
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		scrollbar-gutter: stable;
+	}
 	.body-viewport.compact {
 		border-top: 1px solid #e1e3e1;
 	}
 	.body-shift {
 		will-change: transform;
+	}
+	.body-shift.selfscroll {
+		position: relative;
+	}
+	.body-shift.selfscroll .body {
+		height: 100%;
 	}
 	.midline {
 		position: absolute;
@@ -292,6 +425,26 @@
 		z-index: 2;
 		pointer-events: none;
 		opacity: 0.85;
+	}
+	.nowline {
+		position: absolute;
+		left: var(--gutter-w);
+		right: 0;
+		height: 0;
+		border-top: 2px solid #d93025;
+		z-index: 3;
+		pointer-events: none;
+		opacity: 0.9;
+	}
+	.nowline::before {
+		content: '';
+		position: absolute;
+		left: -5px;
+		top: -5px;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		background: #d93025;
 	}
 	.col {
 		position: relative;

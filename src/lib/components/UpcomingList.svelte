@@ -44,11 +44,11 @@
 		font-size: 11px;
 		font-weight: 600;
 		letter-spacing: 0.4px;
-		color: #444746;
+		/* color: #444746; */
 	}
 	.count {
 		font-weight: 400;
-		color: #747775;
+		/* color: #747775; */
 	}
 	.card {
 		display: flex;
