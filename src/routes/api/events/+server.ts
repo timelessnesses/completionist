@@ -1,6 +1,6 @@
 import { getDb } from '$lib/server/db/index.js';
 import { task } from '$lib/server/db/schema.js';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
 
 type CreateBody = {
