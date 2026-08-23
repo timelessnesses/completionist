@@ -7,6 +7,11 @@
 	import { mdiPlus, mdiClose } from '@mdi/js';
 	import type { PageProps } from './$types';
 	import type { CalendarEvent } from '$lib/mock/data';
+	import { onMount } from 'svelte';
+	import { getWS } from '$lib/websocket.svelte';
+	import { invalidateAll } from '$app/navigation';
+	import { Capacitor } from '@capacitor/core';
+	import { PushNotifications } from '@capacitor/push-notifications';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
@@ -36,6 +41,29 @@
 		events = events.filter((x) => x.id !== id);
 	}
 
+	function requestForNotificationPermission() {
+		if (Capacitor.isNativePlatform()) { // guaranteed android
+
+		} else { // web
+			if ("Notification" in window) {
+				Notification.requestPermission().then((permission) => {
+					if (permission === "granted") {
+						await fetch
+					}
+				});
+			}
+		}
+	}
+
+	onMount(() => {
+		getWS().addEventListener('message', (event) => {
+			const data = JSON.parse(event.data);
+			if (data.type === 'shouldRefetch') {
+				invalidateAll();
+			}
+		});
+		requestForNotificationPermission();
+	});
 	
 </script>
 

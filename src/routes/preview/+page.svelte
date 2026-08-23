@@ -14,6 +14,7 @@
 	import type { PageProps } from './$types';
 	import type { CalendarEvent } from '$lib/mock/data';
 	import { onMount } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
 
 	const { data }: PageProps = $props();
 	let events = $state<CalendarEvent[]>(data.event);
@@ -78,9 +79,8 @@
 			} catch {
 				return;
 			}
-			if (msg.type === 'new_calendar_event' && msg.event) {
-				const ev: CalendarEvent = msg.event;
-				if (!events.some((x) => x.id === ev.id)) events = [...events, ev];
+			if (msg.type === "shouldRefetch") {
+				invalidateAll();
 			}
 		});
 

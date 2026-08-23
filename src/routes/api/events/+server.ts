@@ -2,6 +2,7 @@ import { getDb } from '$lib/server/db/index.js';
 import { task } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
+import type { WebSocketMessage } from '$lib/websocketMessageTypes';
 
 type CreateBody = {
 	task_name: string;
@@ -64,8 +65,9 @@ export const POST = async ({ request, platform, locals }) => {
 			body: JSON.stringify({ type: 'new_calendar_event', event: created })
 		});
 	} catch {
-		/* best effort */
 	}
+
+	await (platform?.env as Env).WS_QUEUE.send(JSON.stringify({ type: 'shouldRefetch' } as WebSocketMessage));
 
 	return json(created, { status: 201 });
 };
