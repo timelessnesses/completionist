@@ -100,8 +100,8 @@
 	}
 
 	onMount(() => {
-		const ws = getWS();
-		if (!ws) return;
+		let ws: WebSocket | undefined;
+		let disposed = false;
 
 		const onMessage = (e: MessageEvent) => {
 			let data: any;
@@ -119,20 +119,29 @@
 			}
 		};
 
-		ws.addEventListener('message', onMessage);
-
 		// Ask the server for the current set of people.
 		const requestPeople = () => {
 			try {
-				ws.send(JSON.stringify({ type: 'online_users' }));
+				ws?.send(JSON.stringify({ type: 'online_users' }));
 			} catch {
 				/* ignore */
 			}
 		};
-		if (ws.readyState === WebSocket.OPEN) requestPeople();
-		else ws.addEventListener('open', requestPeople, { once: true });
+		void getWS()
+			.then((connectedWS) => {
+				if (disposed) return;
+				ws = connectedWS;
+				ws.addEventListener('message', onMessage);
+				requestPeople();
+			})
+			.catch(() => {
+				/* best effort */
+			});
 
-		return () => ws.removeEventListener('message', onMessage);
+		return () => {
+			disposed = true;
+			ws?.removeEventListener('message', onMessage);
+		};
 	});
 
 	async function copyLink() {
@@ -266,7 +275,7 @@
 		width: 300px;
 		flex-shrink: 0;
 		background: var(--color-background);
-		border-left: 1px solid #e1e3e1;
+		border-left: 1px solid var(--color-border);
 		padding: 12px 16px;
 		overflow-y: auto;
 		display: flex;
@@ -277,7 +286,7 @@
 		width: 26px;
 		height: 26px;
 		padding: 4px;
-		color: #444746;
+		color: var(--color-muted-foreground);
 	}
 
 	.panel :global(.settings-card) {
@@ -285,7 +294,7 @@
 		padding: 12px 14px;
 		border-radius: 12px;
 		font-size: 12px;
-		color: #444746;
+		color: var(--color-muted-foreground);
 	}
 	.panel p :global(.settings-card) {
 		margin: 6px 0 0;
@@ -293,7 +302,7 @@
 	}
 	.panel strong :global(.settings-card) {
 		font-size: 12.5px;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
 
 	.head {
@@ -356,11 +365,11 @@
 	.setting-label {
 		font-size: 12px;
 		font-weight: 600;
-		color: #444746;
+		color: var(--color-muted-foreground);
 	}
 	.seg {
 		display: flex;
-		border: 1px solid #c4c7c5;
+		border: 1px solid var(--color-border);
 		border-radius: 999px;
 		overflow: hidden;
 	}
@@ -375,41 +384,41 @@
 		padding: 8px 10px;
 		cursor: pointer;
 		font-size: 12.5px;
-		color: #444746;
+		color: var(--color-muted-foreground);
 	}
 	.seg button.active {
-		background: #c2e7ff;
-		color: #001d35;
+		background: color-mix(in oklch, var(--color-primary) 22%, var(--color-card));
+		color: var(--color-foreground);
 		font-weight: 600;
 	}
 	.seg button + button {
-		border-left: 1px solid #c4c7c5;
+		border-left: 1px solid var(--color-border);
 	}
 
 	.setting-action {
 		display: flex;
 		align-items: center;
 		gap: 12px;
-		border: 1px solid #e1e3e1;
+		border: 1px solid var(--color-border);
 		border-radius: 12px;
-		background: #fff;
+		background: var(--color-card);
 		padding: 10px 12px;
 		cursor: pointer;
 		text-align: left;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 		text-decoration: none;
 		font: inherit;
 	}
 	.setting-action:hover {
-		background: #f8fafd;
+		background: var(--color-muted);
 	}
 	.setting-ic {
 		width: 36px;
 		height: 36px;
 		border-radius: 8px;
 		flex-shrink: 0;
-		background: #f0f4f9;
-		color: #444746;
+		background: var(--color-muted);
+		color: var(--color-muted-foreground);
 		display: grid;
 		place-items: center;
 	}
@@ -425,14 +434,14 @@
 	}
 	.setting-sub {
 		font-size: 11.5px;
-		color: #444746;
+		color: var(--color-muted-foreground);
 	}
 	.setting-action.danger .setting-title {
-		color: #a50e0e;
+		color: var(--color-danger);
 	}
 	.setting-action.danger .setting-ic {
-		background: #fce8e6;
-		color: #a50e0e;
+		background: var(--color-danger-muted);
+		color: var(--color-danger);
 	}
 
 	.panel :global(.people-list) {
@@ -443,8 +452,8 @@
 		width: 32px;
 		height: 32px;
 		border-radius: 50%;
-		background: #e1e3e1;
-		color: #444746;
+		background: var(--color-muted);
+		color: var(--color-muted-foreground);
 		display: grid;
 		place-items: center;
 		font-size: 13px;
@@ -455,15 +464,15 @@
 		display: block;
 		font-size: 13.5px;
 		font-weight: 600;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
 	.prole {
 		display: block;
 		font-size: 11.5px;
-		color: #444746;
+		color: var(--color-muted-foreground);
 	}
 	.active {
-		color: #188038;
+		color: var(--color-success);
 		font-weight: 600;
 	}
 
@@ -484,7 +493,7 @@
 		left: 50%;
 		transform: translate(-50%, -50%);
 		width: min(440px, calc(100vw - 32px));
-		background: #fff;
+		background: var(--color-card);
 		border-radius: 16px;
 		padding: 18px 20px;
 		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
@@ -498,7 +507,7 @@
 		margin: 0;
 		font-size: 16px;
 		font-weight: 500;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
 	.x {
 		display: grid;
@@ -508,15 +517,15 @@
 		border: 0;
 		border-radius: 50%;
 		background: none;
-		color: #444746;
+		color: var(--color-muted-foreground);
 		cursor: pointer;
 	}
 	.x:hover {
-		background: #f0f4f9;
+		background: var(--color-muted);
 	}
 	.share-desc {
 		font-size: 12.5px;
-		color: #444746;
+		color: var(--color-muted-foreground);
 		margin: 8px 0 14px;
 	}
 	.link-row {
@@ -528,11 +537,11 @@
 		min-width: 0;
 		font: inherit;
 		font-size: 12.5px;
-		color: #1f1f1f;
-		border: 1px solid #c4c7c5;
+		color: var(--color-foreground);
+		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		padding: 9px 12px;
-		background: #f8fafd;
+		background: var(--color-background);
 	}
 	.copy {
 		display: inline-flex;

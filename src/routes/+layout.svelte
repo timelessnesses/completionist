@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '$lib/assets/index.css';
 	import { onMount } from 'svelte';
-	import { connectWS, getWS } from '$lib/websocket.svelte';
+	import { connectWS } from '$lib/websocket.svelte';
 
 	const builtAt = new Date(__BUILD_DATE).toLocaleString('en-TH', {
 		dateStyle: 'medium',
@@ -18,17 +18,42 @@
 			// @ts-expect-error - dataset is there
 			server_timing_number = parseInt(server_timing.dataset.serverTiming!);
 		}
-		connectWS();
-		setInterval(() => {
-			getWS().send(JSON.stringify({ type: 'ping', calledWhen: Date.now() }));
-		}, 1000);
+		let ws: WebSocket | undefined;
+		let interval: ReturnType<typeof setInterval> | undefined;
+		let disposed = false;
 
-		getWS().addEventListener('message', (event) => {
-			const data = JSON.parse(event.data);
+		const onMessage = (event: MessageEvent) => {
+			let data: any;
+			try {
+				data = JSON.parse(event.data);
+			} catch {
+				return;
+			}
 			if (data.type === 'pong') {
 				latency = data.calledArrived - data.calledWhen;
 			}
-		});
+		};
+
+		void connectWS()
+			.then((connectedWS) => {
+				if (disposed) return;
+				ws = connectedWS;
+				interval = setInterval(() => {
+					if (ws?.readyState === WebSocket.OPEN) {
+						ws.send(JSON.stringify({ type: 'ping', calledWhen: Date.now() }));
+					}
+				}, 1000);
+				ws.addEventListener('message', onMessage);
+			})
+			.catch(() => {
+				/* best effort */
+			});
+
+		return () => {
+			disposed = true;
+			if (interval) clearInterval(interval);
+			ws?.removeEventListener('message', onMessage);
+		};
 	});
 </script>
 

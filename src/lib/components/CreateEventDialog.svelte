@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { mdiClose, mdiAccountMultipleOutline, mdiLinkVariant } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
-	import { getWS } from '$lib/websocket.svelte';
 	import type { FilterTag, RichTask, UserSummary } from '$lib/mock/data';
 
 	let {
@@ -33,9 +32,9 @@
 	let dependencyQuery = $state('');
 	let selectedAssigneeIds = $state<string[]>([]);
 	let selectedDependencyIds = $state<string[]>([]);
-	let selectedTags = $state<Array<{ id?: string; tag: string; color?: { r: number; g: number; b: number } }>>(
-		[]
-	);
+	let selectedTags = $state<
+		Array<{ id?: string; tag: string; color?: { r: number; g: number; b: number } }>
+	>([]);
 
 	const presetColors = ['#0b57d0', '#188038', '#b0600a', '#a50e0e', '#7c3aed', '#0b8043'];
 	const assigneeSuggestions = $derived.by(() => {
@@ -178,15 +177,6 @@
 			}
 			const created: RichTask = await res.json();
 
-			// Notify other clients over the global websocket (best effort).
-			try {
-				getWS()?.send(
-					JSON.stringify({ type: 'new_calendar_event', calendar_id: created.id, event: created })
-				);
-			} catch {
-				/* best effort */
-			}
-
 			onevent?.(created);
 
 			// reset
@@ -306,8 +296,8 @@
 						onkeydown={(e) => {
 							if (e.key === 'Enter') {
 								e.preventDefault();
-								const exact = users.find((user) =>
-									user.name.toLowerCase() === assigneeQuery.trim().toLowerCase()
+								const exact = users.find(
+									(user) => user.name.toLowerCase() === assigneeQuery.trim().toLowerCase()
 								);
 								if (exact) addAssignee(exact);
 							}
@@ -344,8 +334,8 @@
 						onkeydown={(e) => {
 							if (e.key === 'Enter') {
 								e.preventDefault();
-								const exact = tasks.find((task) =>
-									task.task_name.toLowerCase() === dependencyQuery.trim().toLowerCase()
+								const exact = tasks.find(
+									(task) => task.task_name.toLowerCase() === dependencyQuery.trim().toLowerCase()
 								);
 								if (exact) addDependency(exact);
 							}
@@ -385,7 +375,8 @@
 					<div class="selected-tags">
 						{#each selectedTags as tag, index (tag.id ?? `${tag.tag}-${index}`)}
 							<button type="button" class="tag-chip" onclick={() => removeTagAt(index)}>
-								<span class="tag-dot" style:background={tag.color ? rgbToHex(tag.color) : color}></span>
+								<span class="tag-dot" style:background={tag.color ? rgbToHex(tag.color) : color}
+								></span>
 								{tag.tag}
 							</button>
 						{/each}

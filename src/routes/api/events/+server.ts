@@ -8,7 +8,6 @@ import {
 } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
-import type { WebSocketMessage } from '$lib/websocketMessageTypes';
 import type { Color } from '$lib/server/db/schema.js';
 import { buildTaskNotificationEnvelope } from '$lib/server/task-fanout';
 
@@ -126,20 +125,15 @@ export const POST = async ({ request, platform, locals }) => {
 	const createdWithRelations = await fetchTaskWithRelations(db, created.id);
 	const createdWithRelationsFirst = createdWithRelations[0] ?? created;
 
-	// Broadcast the new event to all connected clients (including /preview) via the
-	// global Durable Object's HTTP broadcast endpoint. Best effort.
 	try {
 		const stub = (platform?.env as Env).GlobalWS.getByName('global_ws');
 		await stub.fetch('https://global-ws.internal/broadcast', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ type: 'new_calendar_event', event: createdWithRelationsFirst })
-			});
+			body: JSON.stringify({ type: 'shouldRefetch' })
+		});
 	} catch {}
 
-	await (platform?.env as Env).WS_QUEUE.send(
-		JSON.stringify({ type: 'shouldRefetch' } as WebSocketMessage)
-	);
 	await (platform?.env as Env).COMPLETIONIST_QUEUE.send(
 		buildTaskNotificationEnvelope(createdWithRelationsFirst, 'created', locals.user?.name)
 	);
@@ -191,7 +185,8 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	if (body.all_day !== undefined) updates.all_day = body.all_day ? 1 : 0;
 	if (body.status) updates.status = body.status;
 	if (typeof body.importance_value === 'number') updates.importance_value = body.importance_value;
-	if (body.completed !== undefined) updates.completed = body.completed ? new Date(body.completed) : null;
+	if (body.completed !== undefined)
+		updates.completed = body.completed ? new Date(body.completed) : null;
 
 	if (Object.keys(updates).length === 0) {
 		return json(existing, { status: 200 });
@@ -264,7 +259,7 @@ export const PUT = async ({ request, platform, locals, url }) => {
 		await stub.fetch('https://global-ws.internal/broadcast', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ type: 'calendar_event_updated', event: updated })
+			body: JSON.stringify({ type: 'shouldRefetch' })
 		});
 	} catch {
 		/* best effort */
@@ -346,7 +341,7 @@ export const DELETE = async ({ platform, locals, url }) => {
 		await stub.fetch('https://global-ws.internal/broadcast', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ type: 'calendar_event_deleted', id })
+			body: JSON.stringify({ type: 'shouldRefetch' })
 		});
 	} catch {
 		/* best effort */

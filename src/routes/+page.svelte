@@ -153,7 +153,8 @@
 	function openTaskBoard() {
 		taskBoardOpen = true;
 		if (!selectedTaskId) {
-			selectedTaskId = activeTasks.find((task) => !task.completed)?.id ?? activeTasks[0]?.id ?? null;
+			selectedTaskId =
+				activeTasks.find((task) => !task.completed)?.id ?? activeTasks[0]?.id ?? null;
 		}
 	}
 
@@ -250,9 +251,7 @@
 				});
 			}
 
-			const reminders = buildTaskReminderNotifications(
-				reminderTasks
-			);
+			const reminders = buildTaskReminderNotifications(reminderTasks);
 
 			if (reminders.length > 0) {
 				await LocalNotifications.schedule({ notifications: reminders });
@@ -492,12 +491,14 @@
 
 	async function registerServiceWorker() {
 		if ('serviceWorker' in navigator) {
+			const vapidPublic = env.PUBLIC_VAPID_PUBLIC;
+			if (!vapidPublic) return;
 			const sw = await navigator.serviceWorker.register('/sw.js');
 			const permission = await Notification.requestPermission();
 			if (permission === 'granted') {
 				const subscription = await sw.pushManager.subscribe({
 					userVisibleOnly: true,
-					applicationServerKey: urlBase64ToUint8Array(env.PUBLIC_VAPID_PUBLIC)
+					applicationServerKey: urlBase64ToUint8Array(vapidPublic)
 				});
 				await fetch('/api/webpush', {
 					method: 'POST',
@@ -518,18 +519,42 @@
 		return outputArray;
 	}
 
-	onMount(async () => {
-		getWS().addEventListener('message', (event) => {
-			const data = JSON.parse(event.data);
+	onMount(() => {
+		let ws: WebSocket | undefined;
+		let disposed = false;
+		const onMessage = (event: MessageEvent) => {
+			let data: any;
+			try {
+				data = JSON.parse(event.data);
+			} catch {
+				return;
+			}
 			if (data.type === 'shouldRefetch') {
 				invalidateAll();
 			}
-		});
-		if (Capacitor.isNativePlatform()) {
-			await requestForNotificationPermission();
-		} else {
-			await registerServiceWorker();
-		}
+		};
+
+		void getWS()
+			.then((connectedWS) => {
+				if (disposed) return;
+				ws = connectedWS;
+				ws.addEventListener('message', onMessage);
+			})
+			.catch(() => {
+				/* best effort */
+			});
+		void (async () => {
+			if (Capacitor.isNativePlatform()) {
+				await requestForNotificationPermission();
+			} else {
+				await registerServiceWorker();
+			}
+		})();
+
+		return () => {
+			disposed = true;
+			ws?.removeEventListener('message', onMessage);
+		};
 	});
 </script>
 
@@ -590,7 +615,7 @@
 			bind:open={createOpen}
 			onevent={onCreated}
 			tags={filters}
-			users={users}
+			{users}
 			tasks={events}
 		/>
 	</div>
@@ -598,329 +623,346 @@
 	{#if taskBoardOpen}
 		<div class="task-overlay" aria-hidden="true" onclick={() => (taskBoardOpen = false)}></div>
 		<section class="task-workbench" aria-label="Task workbench">
-		<header class="task-top">
-			<div class="task-titleblock">
-				<p class="eyebrow">Task board</p>
-				<h2>Projects, assignments, and notes</h2>
-				<p class="sub">
-					{taskCount} tasks, {projectCount} project-like items, {completedCount} completed
-				</p>
-			</div>
-			<label class="search">
-				<MdiIcon path={mdiMagnify} size={18} />
-				<input
-					type="search"
-					placeholder="Search tasks, notes, or tags"
-					bind:value={taskSearch}
-				/>
-			</label>
-		</header>
+			<header class="task-top">
+				<div class="task-titleblock">
+					<p class="eyebrow">Task board</p>
+					<h2>Projects, assignments, and notes</h2>
+					<p class="sub">
+						{taskCount} tasks, {projectCount} project-like items, {completedCount} completed
+					</p>
+				</div>
+				<label class="search">
+					<MdiIcon path={mdiMagnify} size={18} />
+					<input type="search" placeholder="Search tasks, notes, or tags" bind:value={taskSearch} />
+				</label>
+			</header>
 
-		<div class="task-grid">
-			<aside class="task-list">
-				{#each activeTasks as task (task.id)}
-					<button
-						class="task-pill"
-						class:selected={selectedTask?.id === task.id}
-						class:completed={!!task.completed}
-						onclick={() => (selectedTaskId = task.id)}
-					>
-						<div class="pill-head">
-							<span class="status-dot" style:background={rgbToHex(task.color)}></span>
-							<strong>{task.task_name}</strong>
-							{#if task.completed}
-								<MdiIcon path={mdiCheckboxMarkedCircleOutline} size={16} />
-							{:else}
-								<MdiIcon path={mdiCircleOutline} size={16} />
-							{/if}
-						</div>
-						<div class="pill-meta">
-							<span>{taskProjectScore(task)} score</span>
-							<span>{(task.subtasks?.length ?? 0)} children</span>
-							<span>{(task.assignees?.length ?? 0)} assignees</span>
-						</div>
-						{#if (task.tags ?? []).length}
-							<div class="pill-tags">
-								{#each (task.tags ?? []).slice(0, 4) as tag}
-									<span class="mini-tag">
-										<span class="tag-dot" style:background={rgbToHex(tag.tag?.color ?? task.color)}></span>
-										{tag.tag?.tag}
-									</span>
-								{/each}
-							</div>
-						{/if}
-						{#if task.completed}
-							<div class="pill-note">Completed</div>
-						{/if}
-					</button>
-				{/each}
-			</aside>
-
-			<article class="task-detail">
-				{#if selectedTask}
-					<div class="detail-head">
-						<div>
-							<p class="eyebrow">Selected task</p>
-							<h3>{selectedTask.task_name}</h3>
-						</div>
+			<div class="task-grid">
+				<aside class="task-list">
+					{#each activeTasks as task (task.id)}
 						<button
-							class="ghost-toggle"
-							type="button"
-							disabled={taskBusy || !canComplete(selectedTask)}
-							onclick={() => toggleTaskComplete(selectedTask)}
+							class="task-pill"
+							class:selected={selectedTask?.id === task.id}
+							class:completed={!!task.completed}
+							onclick={() => (selectedTaskId = task.id)}
 						>
-							<MdiIcon
-								path={selectedTask.completed ? mdiCheckboxMarkedCircleOutline : mdiCircleOutline}
-								size={18}
-							/>
-							{taskBusy && taskAction === 'toggle'
-								? 'Updating...'
-								: selectedTask.completed
-									? 'Mark open'
-									: 'Mark done'}
-						</button>
-					</div>
-
-					<form
-						class="detail-form"
-						onsubmit={(e) => {
-							e.preventDefault();
-							saveSelectedTask();
-						}}
-					>
-						<div class="grid2">
-							<label class="field">
-								<span class="lbl">Task name</span>
-								<input type="text" bind:value={taskDraft.task_name} disabled={taskBusy} />
-							</label>
-							<label class="field">
-								<span class="lbl">Color</span>
-								<input
-									type="color"
-									class="picker"
-									bind:value={taskDraft.color}
-									disabled={taskBusy}
-								/>
-							</label>
-						</div>
-
-						<label class="field">
-							<span class="lbl">Description</span>
-							<textarea rows="4" bind:value={taskDraft.description} disabled={taskBusy}></textarea>
-						</label>
-
-						<label class="row">
-							<input type="checkbox" bind:checked={taskDraft.completed} disabled={taskBusy} />
-							<span>Completed</span>
-						</label>
-
-						<div class="field">
-							<span class="lbl">Tags</span>
-							<div class="chip-row">
-								{#each taskDraft.tagDrafts as tag, index (tag.id ?? `${tag.tag}-${index}`)}
-									<button type="button" class="chip" onclick={() => removeDraftTag(index)}>
-										<span class="tag-dot" style:background={tag.color ? rgbToHex(tag.color) : taskDraft.color}></span>
-										{tag.tag}
-									</button>
-								{/each}
-							</div>
-							<div class="inline-add">
-								<input
-									type="text"
-									placeholder="Add or autocomplete a tag"
-									bind:value={tagDraft}
-									disabled={taskBusy}
-									onkeydown={(e) => {
-										if (e.key === 'Enter') {
-											e.preventDefault();
-											addDraftTag();
-										}
-									}}
-								/>
-								<button type="button" class="mini-btn" onclick={addDraftTag}>Add</button>
-							</div>
-							<div class="suggestions">
-								{#each filters.filter((tag) => !taskDraft.tagDrafts.some((picked) => picked.id === tag.id)) as tag (tag.id)}
-									<button
-										type="button"
-										class="suggestion"
-										disabled={taskBusy}
-										onclick={() =>
-											(taskDraft.tagDrafts = [
-												...taskDraft.tagDrafts,
-												{ id: tag.id, tag: tag.tag, color: tag.color }
-											])
-										}
-									>
-										<span class="tag-dot" style:background={rgbToHex(tag.color)}></span>
-										{tag.tag}
-									</button>
-								{/each}
-							</div>
-						</div>
-
-						<div class="field">
-							<span class="lbl">Assignees</span>
-							<div class="chip-row">
-								{#each taskDraft.assigneeIds as id (id)}
-									{@const assignee = users.find((user) => user.id === id)}
-									<button type="button" class="chip" onclick={() => removeDraftAssignee(id)}>
-										<MdiIcon path={mdiAccountMultipleOutline} size={14} />
-										{assignee?.name ?? id}
-									</button>
-								{/each}
-							</div>
-							<div class="inline-add">
-								<input
-									type="text"
-									placeholder="Add assignee by name"
-									bind:value={assigneeDraft}
-									disabled={taskBusy}
-									oninput={() => (assigneeDraft = assigneeDraft)}
-								/>
-								<button type="button" class="mini-btn" disabled>Add</button>
-							</div>
-							<div class="suggestions">
-								{#each users.filter((user) => !taskDraft.assigneeIds.includes(user.id)) as user (user.id)}
-									<button
-										type="button"
-										class="suggestion"
-										disabled={taskBusy}
-										onclick={() => addDraftAssignee(user)}
-									>
-										<MdiIcon path={mdiAccountMultipleOutline} size={14} />
-										{user.name}
-									</button>
-								{/each}
-							</div>
-						</div>
-
-						<div class="field">
-							<span class="lbl">Dependencies</span>
-							<div class="chip-row">
-								{#each taskDraft.dependencyIds as id (id)}
-									{@const dependency = taskMap.get(id)}
-									<button type="button" class="chip" onclick={() => removeDraftDependency(id)}>
-										<MdiIcon path={mdiLinkVariant} size={14} />
-										{dependency?.task_name ?? id}
-									</button>
-								{/each}
-							</div>
-							<div class="inline-add">
-								<input
-									type="text"
-									placeholder="Add dependency by task name"
-									bind:value={dependencyDraft}
-									disabled={taskBusy}
-								/>
-								<button type="button" class="mini-btn" disabled>Add</button>
-							</div>
-							<div class="suggestions">
-								{#each activeTasks.filter(
-									(task) =>
-										task.id !== selectedTask.id &&
-										!taskDraft.dependencyIds.includes(task.id)
-								) as task (task.id)}
-									<button
-										type="button"
-										class="suggestion"
-										disabled={taskBusy}
-										onclick={() => addDraftDependency(task)}
-									>
-										<MdiIcon path={mdiLinkVariant} size={14} />
-										{task.task_name}
-									</button>
-								{/each}
-							</div>
-						</div>
-
-						<details class="thread" open>
-							<summary>
-								<span class="lbl">Activity thread</span>
-								<span class="thread-count">{(selectedTask.comments ?? []).length + (selectedTask.attachments ?? []).length}</span>
-							</summary>
-							<div class="thread-body">
-								{#if mergedActivity(selectedTask).length}
-									<div class="comment-list">
-										{#each mergedActivity(selectedTask) as item (item.type + item.id)}
-											<div class="thread-item" class:attachment={item.type === 'attachment'}>
-												<div class="comment-head">
-													<strong>{item.user?.name ?? item.user_id}</strong>
-													<span>{new Date(item.created_at).toLocaleString()}</span>
-												</div>
-												{#if item.type === 'comment'}
-													<p>{item.comment}</p>
-												{:else}
-													<p class="attachment-row">
-														<MdiIcon path={mdiPaperclip} size={14} />
-														<a href={item.file_url} target="_blank" rel="noreferrer">{item.file_name}</a>
-													</p>
-												{/if}
-											</div>
-										{/each}
-									</div>
+							<div class="pill-head">
+								<span class="status-dot" style:background={rgbToHex(task.color)}></span>
+								<strong>{task.task_name}</strong>
+								{#if task.completed}
+									<MdiIcon path={mdiCheckboxMarkedCircleOutline} size={16} />
 								{:else}
-									<p class="thread-empty">No comments or attachments yet.</p>
+									<MdiIcon path={mdiCircleOutline} size={16} />
 								{/if}
+							</div>
+							<div class="pill-meta">
+								<span>{taskProjectScore(task)} score</span>
+								<span>{task.subtasks?.length ?? 0} children</span>
+								<span>{task.assignees?.length ?? 0} assignees</span>
+							</div>
+							{#if (task.tags ?? []).length}
+								<div class="pill-tags">
+									{#each (task.tags ?? []).slice(0, 4) as tag}
+										<span class="mini-tag">
+											<span
+												class="tag-dot"
+												style:background={rgbToHex(tag.tag?.color ?? task.color)}
+											></span>
+											{tag.tag?.tag}
+										</span>
+									{/each}
+								</div>
+							{/if}
+							{#if task.completed}
+								<div class="pill-note">Completed</div>
+							{/if}
+						</button>
+					{/each}
+				</aside>
+
+				<article class="task-detail">
+					{#if selectedTask}
+						<div class="detail-head">
+							<div>
+								<p class="eyebrow">Selected task</p>
+								<h3>{selectedTask.task_name}</h3>
+							</div>
+							<button
+								class="ghost-toggle"
+								type="button"
+								disabled={taskBusy || !canComplete(selectedTask)}
+								onclick={() => toggleTaskComplete(selectedTask)}
+							>
+								<MdiIcon
+									path={selectedTask.completed ? mdiCheckboxMarkedCircleOutline : mdiCircleOutline}
+									size={18}
+								/>
+								{taskBusy && taskAction === 'toggle'
+									? 'Updating...'
+									: selectedTask.completed
+										? 'Mark open'
+										: 'Mark done'}
+							</button>
+						</div>
+
+						<form
+							class="detail-form"
+							onsubmit={(e) => {
+								e.preventDefault();
+								saveSelectedTask();
+							}}
+						>
+							<div class="grid2">
 								<label class="field">
-									<span class="lbl">Write a comment</span>
-									<textarea
-										rows="3"
-										bind:value={commentDraft}
-										placeholder="Write a text comment"
-										disabled={taskBusy}
-									></textarea>
+									<span class="lbl">Task name</span>
+									<input type="text" bind:value={taskDraft.task_name} disabled={taskBusy} />
 								</label>
-								<div class="inline-actions">
-									<button
-										type="button"
-										class="mini-btn"
-										disabled={taskBusy || !commentDraft.trim()}
-										onclick={() => void addLocalComment()}
-									>
-										{taskBusy && taskAction === 'comment' ? 'Adding...' : 'Add comment'}
-									</button>
-									<label class="mini-btn file-btn" class:busy={taskBusy}>
-										{taskBusy && taskAction === 'attachment' ? 'Adding...' : 'Attach file'}
-										<input
-											type="file"
+								<label class="field">
+									<span class="lbl">Color</span>
+									<input
+										type="color"
+										class="picker"
+										bind:value={taskDraft.color}
+										disabled={taskBusy}
+									/>
+								</label>
+							</div>
+
+							<label class="field">
+								<span class="lbl">Description</span>
+								<textarea rows="4" bind:value={taskDraft.description} disabled={taskBusy}
+								></textarea>
+							</label>
+
+							<label class="row">
+								<input type="checkbox" bind:checked={taskDraft.completed} disabled={taskBusy} />
+								<span>Completed</span>
+							</label>
+
+							<div class="field">
+								<span class="lbl">Tags</span>
+								<div class="chip-row">
+									{#each taskDraft.tagDrafts as tag, index (tag.id ?? `${tag.tag}-${index}`)}
+										<button type="button" class="chip" onclick={() => removeDraftTag(index)}>
+											<span
+												class="tag-dot"
+												style:background={tag.color ? rgbToHex(tag.color) : taskDraft.color}
+											></span>
+											{tag.tag}
+										</button>
+									{/each}
+								</div>
+								<div class="inline-add">
+									<input
+										type="text"
+										placeholder="Add or autocomplete a tag"
+										bind:value={tagDraft}
+										disabled={taskBusy}
+										onkeydown={(e) => {
+											if (e.key === 'Enter') {
+												e.preventDefault();
+												addDraftTag();
+											}
+										}}
+									/>
+									<button type="button" class="mini-btn" onclick={addDraftTag}>Add</button>
+								</div>
+								<div class="suggestions">
+									{#each filters.filter((tag) => !taskDraft.tagDrafts.some((picked) => picked.id === tag.id)) as tag (tag.id)}
+										<button
+											type="button"
+											class="suggestion"
 											disabled={taskBusy}
-											onchange={(e) => {
-												const file = (e.currentTarget as HTMLInputElement).files?.[0];
-												if (file) void addLocalAttachment(file);
-											}}
-										/>
-									</label>
+											onclick={() =>
+												(taskDraft.tagDrafts = [
+													...taskDraft.tagDrafts,
+													{ id: tag.id, tag: tag.tag, color: tag.color }
+												])}
+										>
+											<span class="tag-dot" style:background={rgbToHex(tag.color)}></span>
+											{tag.tag}
+										</button>
+									{/each}
 								</div>
 							</div>
-						</details>
 
-						{#if taskError}
-							<p class="error">{taskError}</p>
-						{/if}
-
-						<footer class="task-foot">
-							<div class="meta">
-								<span><MdiIcon path={mdiTagOutline} size={14} /> {(selectedTask.tags ?? []).length} tags</span>
-								<span><MdiIcon path={mdiMessageTextOutline} size={14} /> {(selectedTask.comments ?? []).length} comments</span>
-								<span><MdiIcon path={mdiPaperclip} size={14} /> {(selectedTask.attachments ?? []).length} files</span>
+							<div class="field">
+								<span class="lbl">Assignees</span>
+								<div class="chip-row">
+									{#each taskDraft.assigneeIds as id (id)}
+										{@const assignee = users.find((user) => user.id === id)}
+										<button type="button" class="chip" onclick={() => removeDraftAssignee(id)}>
+											<MdiIcon path={mdiAccountMultipleOutline} size={14} />
+											{assignee?.name ?? id}
+										</button>
+									{/each}
+								</div>
+								<div class="inline-add">
+									<input
+										type="text"
+										placeholder="Add assignee by name"
+										bind:value={assigneeDraft}
+										disabled={taskBusy}
+										oninput={() => (assigneeDraft = assigneeDraft)}
+									/>
+									<button type="button" class="mini-btn" disabled>Add</button>
+								</div>
+								<div class="suggestions">
+									{#each users.filter((user) => !taskDraft.assigneeIds.includes(user.id)) as user (user.id)}
+										<button
+											type="button"
+											class="suggestion"
+											disabled={taskBusy}
+											onclick={() => addDraftAssignee(user)}
+										>
+											<MdiIcon path={mdiAccountMultipleOutline} size={14} />
+											{user.name}
+										</button>
+									{/each}
+								</div>
 							</div>
-							<button class="save-btn" type="submit" disabled={taskBusy}>
-								<MdiIcon path={mdiContentSave} size={16} />
-								{taskBusy && taskAction === 'save' ? 'Saving...' : 'Save task'}
-							</button>
-						</footer>
-					</form>
-				{:else}
-					<div class="empty-task">
-						<MdiIcon path={mdiPlusCircleOutline} size={28} />
-						<h3>No task selected</h3>
-						<p>Pick a task pill on the left to inspect assignees, tags, dependencies, and notes.</p>
-					</div>
-				{/if}
-			</article>
-		</div>
-			<button class="task-close" aria-label="Close task board" onclick={() => (taskBoardOpen = false)}>
+
+							<div class="field">
+								<span class="lbl">Dependencies</span>
+								<div class="chip-row">
+									{#each taskDraft.dependencyIds as id (id)}
+										{@const dependency = taskMap.get(id)}
+										<button type="button" class="chip" onclick={() => removeDraftDependency(id)}>
+											<MdiIcon path={mdiLinkVariant} size={14} />
+											{dependency?.task_name ?? id}
+										</button>
+									{/each}
+								</div>
+								<div class="inline-add">
+									<input
+										type="text"
+										placeholder="Add dependency by task name"
+										bind:value={dependencyDraft}
+										disabled={taskBusy}
+									/>
+									<button type="button" class="mini-btn" disabled>Add</button>
+								</div>
+								<div class="suggestions">
+									{#each activeTasks.filter((task) => task.id !== selectedTask.id && !taskDraft.dependencyIds.includes(task.id)) as task (task.id)}
+										<button
+											type="button"
+											class="suggestion"
+											disabled={taskBusy}
+											onclick={() => addDraftDependency(task)}
+										>
+											<MdiIcon path={mdiLinkVariant} size={14} />
+											{task.task_name}
+										</button>
+									{/each}
+								</div>
+							</div>
+
+							<details class="thread" open>
+								<summary>
+									<span class="lbl">Activity thread</span>
+									<span class="thread-count"
+										>{(selectedTask.comments ?? []).length +
+											(selectedTask.attachments ?? []).length}</span
+									>
+								</summary>
+								<div class="thread-body">
+									{#if mergedActivity(selectedTask).length}
+										<div class="comment-list">
+											{#each mergedActivity(selectedTask) as item (item.type + item.id)}
+												<div class="thread-item" class:attachment={item.type === 'attachment'}>
+													<div class="comment-head">
+														<strong>{item.user?.name ?? item.user_id}</strong>
+														<span>{new Date(item.created_at).toLocaleString()}</span>
+													</div>
+													{#if item.type === 'comment'}
+														<p>{item.comment}</p>
+													{:else}
+														<p class="attachment-row">
+															<MdiIcon path={mdiPaperclip} size={14} />
+															<a href={item.file_url} target="_blank" rel="noreferrer"
+																>{item.file_name}</a
+															>
+														</p>
+													{/if}
+												</div>
+											{/each}
+										</div>
+									{:else}
+										<p class="thread-empty">No comments or attachments yet.</p>
+									{/if}
+									<label class="field">
+										<span class="lbl">Write a comment</span>
+										<textarea
+											rows="3"
+											bind:value={commentDraft}
+											placeholder="Write a text comment"
+											disabled={taskBusy}></textarea>
+									</label>
+									<div class="inline-actions">
+										<button
+											type="button"
+											class="mini-btn"
+											disabled={taskBusy || !commentDraft.trim()}
+											onclick={() => void addLocalComment()}
+										>
+											{taskBusy && taskAction === 'comment' ? 'Adding...' : 'Add comment'}
+										</button>
+										<label class="mini-btn file-btn" class:busy={taskBusy}>
+											{taskBusy && taskAction === 'attachment' ? 'Adding...' : 'Attach file'}
+											<input
+												type="file"
+												disabled={taskBusy}
+												onchange={(e) => {
+													const file = (e.currentTarget as HTMLInputElement).files?.[0];
+													if (file) void addLocalAttachment(file);
+												}}
+											/>
+										</label>
+									</div>
+								</div>
+							</details>
+
+							{#if taskError}
+								<p class="error">{taskError}</p>
+							{/if}
+
+							<footer class="task-foot">
+								<div class="meta">
+									<span
+										><MdiIcon path={mdiTagOutline} size={14} />
+										{(selectedTask.tags ?? []).length} tags</span
+									>
+									<span
+										><MdiIcon path={mdiMessageTextOutline} size={14} />
+										{(selectedTask.comments ?? []).length} comments</span
+									>
+									<span
+										><MdiIcon path={mdiPaperclip} size={14} />
+										{(selectedTask.attachments ?? []).length} files</span
+									>
+								</div>
+								<button class="save-btn" type="submit" disabled={taskBusy}>
+									<MdiIcon path={mdiContentSave} size={16} />
+									{taskBusy && taskAction === 'save' ? 'Saving...' : 'Save task'}
+								</button>
+							</footer>
+						</form>
+					{:else}
+						<div class="empty-task">
+							<MdiIcon path={mdiPlusCircleOutline} size={28} />
+							<h3>No task selected</h3>
+							<p>
+								Pick a task pill on the left to inspect assignees, tags, dependencies, and notes.
+							</p>
+						</div>
+					{/if}
+				</article>
+			</div>
+			<button
+				class="task-close"
+				aria-label="Close task board"
+				onclick={() => (taskBoardOpen = false)}
+			>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
 		</section>
@@ -933,8 +975,16 @@
 		flex-direction: column;
 		min-height: 100vh;
 		background:
-			radial-gradient(circle at top left, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 35%),
-			linear-gradient(180deg, var(--color-background) 0%, color-mix(in oklch, var(--color-background) 90%, var(--color-card) 10%) 100%);
+			radial-gradient(
+				circle at top left,
+				color-mix(in oklch, var(--color-primary) 12%, transparent),
+				transparent 35%
+			),
+			linear-gradient(
+				180deg,
+				var(--color-background) 0%,
+				color-mix(in oklch, var(--color-background) 90%, var(--color-card) 10%) 100%
+			);
 		color: var(--color-foreground);
 	}
 	.shell {
