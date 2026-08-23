@@ -215,14 +215,15 @@
 	}
 
 	.day:hover .num-bubble {
-		background: #f0f4f9;
+		background: var(--color-foreground);
+		color: var(--color-background);
 	}
 	.day.dim {
-		/* color: #9aa0a6; */
+		color: #575b5f;
 	}
 	.day.selected .num-bubble {
 		background: #0b57d0;
-		/* color: #fff; */
+		color: var(--color-foreground);
 		font-weight: 600;
 	}
 	.day.today:not(.selected) .num-bubble {

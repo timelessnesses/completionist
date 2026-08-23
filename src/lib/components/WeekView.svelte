@@ -87,7 +87,7 @@
 				d.getMinutes() +
 				d.getSeconds() / 60 +
 				d.getMilliseconds() / MS_PER_MINUTE;
-			return [{ ev, top: (startMinutes / MINUTES_PER_DAY) * 100 }];
+			return [{ ev, top: (startMinutes / 60) * hourPx }];
 		});
 	}
 
@@ -274,8 +274,8 @@
 						{#each timedEvents(toKey(d)) as t (t.ev.id)}
 							<button
 								class="ev"
-								style:top={`${t.top}%`}
-								style:background={`rgba(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b}, 0.15)`}
+								style:top={`${t.top}px`}
+								style:background={`rgba(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b}, 1)`}
 								style:color={`rgb(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b})`}
 								title={t.ev.task_name}
 								onclick={() => onSelectEvent?.(t.ev)}
@@ -301,13 +301,13 @@
 		display: flex;
 		flex-direction: column;
 		border-top: 1px solid #e1e3e1;
-		background: #fff;
+		background: var(--color-background);
 	}
 	.sticky {
 		position: sticky;
 		top: 0;
 		z-index: 5;
-		background: #fff;
+		background: var(--color-background);
 		scrollbar-gutter: stable;
 	}
 	.band {
@@ -330,7 +330,7 @@
 	.dow {
 		font-size: 11px;
 		font-weight: 500;
-		color: #444746;
+		color: var(--color-foreground);
 	}
 	.dnum {
 		height: 30px;
@@ -342,7 +342,7 @@
 		justify-content: center;
 		border-radius: 50%;
 		font-size: 15px;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 		aspect-ratio: 1 / 1;
 	}
 	.dnum.today {
@@ -361,7 +361,7 @@
 	}
 	.allday-row .gutter span {
 		font-size: 10px;
-		color: #747775;
+		color: var(--color-foreground);
 	}
 	.ad-col {
 		display: flex;
@@ -392,7 +392,7 @@
 	.l-row span {
 		transform: translateY(-50%);
 		font-size: 10.5px;
-		color: #70757a;
+		color: var(--color-foreground);
 	}
 	.body-viewport {
 		position: relative;
@@ -451,7 +451,7 @@
 		border-left: 1px solid #e1e3e1;
 	}
 	.col.todaycol {
-		background: #f4f8ff;
+		background: var(--color-muted);
 	}
 	.h-row {
 		height: var(--hour-h);
@@ -465,7 +465,7 @@
 		position: absolute;
 		left: 2px;
 		right: 2px;
-		height: calc(100% / 24 - 3px);
+		height: calc(var(--hour-h) + 1px);
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
@@ -482,10 +482,12 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		color: var(--color-foreground);
 	}
 	.ev-time {
 		font-size: 10px;
 		opacity: 0.85;
+		color: var(--color-foreground);
 	}
 
 	@media (max-width: 860px) {

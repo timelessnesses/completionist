@@ -275,7 +275,7 @@
 		width: min(520px, calc(100vw - 24px));
 		max-height: calc(100dvh - 48px);
 		overflow-y: auto;
-		background: #fff;
+		background: var(--color-background);
 		border-radius: 16px;
 		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
 		padding: 10px 18px 18px;
@@ -303,7 +303,8 @@
 		cursor: pointer;
 	}
 	.icon:hover {
-		background: #f0f4f9;
+		background: var(--color-foreground);
+		color: var(--color-background);
 	}
 
 	.body {
@@ -321,11 +322,11 @@
 	.field textarea {
 		font: inherit;
 		font-size: 13.5px;
-		/* color: #1f1f1f; */
+		color: var(--color-foreground);
 		border: 1px solid #c4c7c5;
 		border-radius: 8px;
 		padding: 9px 12px;
-		background: #fff;
+		background: var(--color-background);
 		width: 100%;
 	}
 	.field textarea {

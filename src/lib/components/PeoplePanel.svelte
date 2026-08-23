@@ -265,7 +265,7 @@
 	.panel {
 		width: 300px;
 		flex-shrink: 0;
-		background: #f8fafd;
+		background: var(--color-background);
 		border-left: 1px solid #e1e3e1;
 		padding: 12px 16px;
 		overflow-y: auto;
@@ -305,7 +305,7 @@
 		font-size: 12px;
 		font-weight: 700;
 		letter-spacing: 0.3px;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
 	.actions {
 		display: flex;
@@ -328,7 +328,7 @@
 		width: 32px;
 		height: 32px;
 		padding: 6px;
-		color: #444746;
+		color: var(--color-foreground);
 		border: 0;
 		border-radius: 50%;
 		background: none;
@@ -337,7 +337,8 @@
 		place-items: center;
 	}
 	.actions .icon-btn:hover {
-		background: #eef2f7;
+		background: var(--color-foreground);
+		color: var(--color-background);
 	}
 
 	/* Settings dialog contents */

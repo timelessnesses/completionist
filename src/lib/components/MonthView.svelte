@@ -270,7 +270,7 @@
 		border: 0;
 		border-radius: 50%;
 		background: none;
-		color: #444746;
+		color: var(--color-foreground);
 		cursor: pointer;
 	}
 	.icon-btn:hover {
@@ -292,7 +292,7 @@
 		padding: 7px 18px;
 		cursor: pointer;
 		font-size: 13px;
-		color: #444746;
+		color: var(--color-foreground);
 	}
 	.segmented button.active {
 		background: #c2e7ff;
@@ -309,7 +309,7 @@
 	.chip-label {
 		font-size: 11px;
 		font-weight: 600;
-		color: #444746;
+		color: var(--color-foreground);
 	}
 	.chip {
 		display: flex;
@@ -342,7 +342,7 @@
 	.dow {
 		font-size: 11px;
 		font-weight: 500;
-		color: #444746;
+		color: var(--color-foreground);
 		text-align: center;
 		padding-top: 8px;
 		border-left: 1px solid #e1e3e1;
@@ -360,12 +360,12 @@
 		border-left: 0;
 	}
 	.cell.dim .daynum {
-		color: #9aa0a6;
+		color: #4d5155 !important;
 	}
 	.daynum {
 		font-size: 12px;
 		line-height: 1;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 		height: 22px;
 		width: 22px;
 		min-width: 22px;
