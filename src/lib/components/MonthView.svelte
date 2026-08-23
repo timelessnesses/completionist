@@ -5,7 +5,9 @@
 		mdiChevronRight,
 		mdiMenu,
 		mdiAccountMultipleOutline,
-		mdiCircleMedium
+		mdiCircleMedium,
+		mdiCheckboxMarkedCircleOutline,
+		mdiTriangleOutline
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import WeekView from './WeekView.svelte';
@@ -19,7 +21,7 @@
 		addDays,
 		toKey
 	} from '$lib/calendar';
-	import type { CalendarEvent, FilterTag } from '$lib/mock/data';
+	import type { RichTask, FilterTag, UserSummary } from '$lib/mock/data';
 
 	type View = 'Month' | 'Week';
 
@@ -28,6 +30,8 @@
 		onPeople,
 		filters,
 		events,
+		users = [],
+		tasks = [],
 		viewerId,
 		isAdmin,
 		onUpdated,
@@ -36,10 +40,12 @@
 		onMenu?: () => void;
 		onPeople?: () => void;
 		filters: FilterTag[];
-		events: CalendarEvent[];
+		events: RichTask[];
+		users?: UserSummary[];
+		tasks?: RichTask[];
 		viewerId: string | null;
 		isAdmin: boolean;
-		onUpdated?: (ev: CalendarEvent) => void;
+		onUpdated?: (ev: RichTask) => void;
 		onDeleted?: (id: string) => void;
 	} = $props();
 
@@ -47,11 +53,11 @@
 	let viewDate = $state(new Date());
 	let activeFilters = $state(new Set(filters.map((f) => f.id)));
 	let detailsOpen = $state(false);
-	let selectedEvent = $state<CalendarEvent | null>(null);
+	let selectedEvent = $state<RichTask | null>(null);
 
 	const cells = $derived(buildMonthGrid(viewDate.getFullYear(), viewDate.getMonth()));
 	const eventsByDay = $derived.by(() => {
-		const map = new Map<string, CalendarEvent[]>();
+		const map = new Map<string, RichTask[]>();
 		for (const ev of events) {
 			const start = new Date(ev.start_at);
 			const end = new Date(ev.end_at);
@@ -77,26 +83,26 @@
 		return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 	}
 
-	function spansPrevDay(ev: CalendarEvent, day: Date): boolean {
+	function spansPrevDay(ev: RichTask, day: Date): boolean {
 		const prev = addDays(dayOnly(day), -1);
 		const start = dayOnly(new Date(ev.start_at));
 		const end = dayOnly(new Date(ev.end_at));
 		return prev >= start && prev <= end;
 	}
 
-	function spansNextDay(ev: CalendarEvent, day: Date): boolean {
+	function spansNextDay(ev: RichTask, day: Date): boolean {
 		const next = addDays(dayOnly(day), 1);
 		const start = dayOnly(new Date(ev.start_at));
 		const end = dayOnly(new Date(ev.end_at));
 		return next >= start && next <= end;
 	}
 
-	function openEvent(ev: CalendarEvent) {
+	function openEvent(ev: RichTask) {
 		selectedEvent = ev;
 		detailsOpen = true;
 	}
 
-	function canEditEvent(ev: CalendarEvent | null): boolean {
+	function canEditEvent(ev: RichTask | null): boolean {
 		if (!ev) return false;
 		return isAdmin || (!!viewerId && ev.owner === viewerId);
 	}
@@ -111,7 +117,7 @@
 		activeFilters = next;
 	}
 
-	function handleUpdated(ev: CalendarEvent) {
+	function handleUpdated(ev: RichTask) {
 		onUpdated?.(ev);
 	}
 
@@ -188,10 +194,21 @@
 								title={ev.task_name}
 								onclick={() => openEvent(ev)}
 							>
-								{#if !spansPrevDay(ev, cell.date)}
-									{ev.task_name}
-								{:else}
-									<MdiIcon path={mdiCircleMedium} size={12} />
+								<span class="event-label">
+									{#if !spansPrevDay(ev, cell.date)}
+										{ev.task_name}
+									{:else}
+										<MdiIcon path={mdiCircleMedium} size={12} />
+									{/if}
+								</span>
+								{#if ev.completed}
+									<span class="event-status done" aria-hidden="true">
+										<MdiIcon path={mdiCheckboxMarkedCircleOutline} size={14} />
+									</span>
+								{:else if (ev.dependents?.length ?? 0) > 0}
+									<span class="event-status blocked" aria-hidden="true">
+										<MdiIcon path={mdiTriangleOutline} size={14} />
+									</span>
 								{/if}
 							</button>
 						{/each}
@@ -216,6 +233,8 @@
 		canEdit={canEditEvent(selectedEvent)}
 		onupdated={handleUpdated}
 		ondeleted={handleDeleted}
+		{users}
+		{tasks}
 	/>
 </section>
 
@@ -400,7 +419,22 @@
 		text-overflow: ellipsis;
 		display: flex;
 		align-items: center;
-		gap: 2px;
+		gap: 6px;
+	}
+	.event-label {
+		min-width: 0;
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.event-status {
+		flex-shrink: 0;
+	}
+	.event-status.done {
+		color: #188038;
+	}
+	.event-status.blocked {
+		color: #d93025;
 	}
 	.event.cont-prev {
 		margin-left: -6px;

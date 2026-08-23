@@ -1,17 +1,21 @@
 <script lang="ts">
-	import { mdiClose } from '@mdi/js';
+	import { mdiClose, mdiAccountMultipleOutline, mdiLinkVariant } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import { getWS } from '$lib/websocket.svelte';
-	import type { FilterTag, RichTask } from '$lib/mock/data';
+	import type { FilterTag, RichTask, UserSummary } from '$lib/mock/data';
 
 	let {
 		open = $bindable(false),
 		onevent,
-		tags = []
+		tags = [],
+		users = [],
+		tasks = []
 	}: {
 		open?: boolean;
 		onevent?: (ev: RichTask) => void;
 		tags?: FilterTag[];
+		users?: UserSummary[];
+		tasks?: RichTask[];
 	} = $props();
 
 	let title = $state('');
@@ -25,11 +29,29 @@
 	let busy = $state(false);
 	let errorMsg = $state('');
 	let tagInput = $state('');
+	let assigneeQuery = $state('');
+	let dependencyQuery = $state('');
+	let selectedAssigneeIds = $state<string[]>([]);
+	let selectedDependencyIds = $state<string[]>([]);
 	let selectedTags = $state<Array<{ id?: string; tag: string; color?: { r: number; g: number; b: number } }>>(
 		[]
 	);
 
 	const presetColors = ['#0b57d0', '#188038', '#b0600a', '#a50e0e', '#7c3aed', '#0b8043'];
+	const assigneeSuggestions = $derived.by(() => {
+		const q = assigneeQuery.trim().toLowerCase();
+		return users
+			.filter((user) => !selectedAssigneeIds.includes(user.id))
+			.filter((user) => !q || user.name.toLowerCase().includes(q))
+			.slice(0, 8);
+	});
+	const dependencySuggestions = $derived.by(() => {
+		const q = dependencyQuery.trim().toLowerCase();
+		return tasks
+			.filter((task) => !selectedDependencyIds.includes(task.id))
+			.filter((task) => !q || task.task_name.toLowerCase().includes(q))
+			.slice(0, 8);
+	});
 	const tagSuggestions = $derived.by(() => {
 		const query = tagInput.trim().toLowerCase();
 		return tags
@@ -47,6 +69,10 @@
 		open = false;
 		errorMsg = '';
 		tagInput = '';
+		assigneeQuery = '';
+		dependencyQuery = '';
+		selectedAssigneeIds = [];
+		selectedDependencyIds = [];
 		selectedTags = [];
 	}
 
@@ -84,6 +110,28 @@
 		selectedTags = selectedTags.filter((_, i) => i !== index);
 	}
 
+	function addAssignee(user: UserSummary) {
+		if (!selectedAssigneeIds.includes(user.id)) {
+			selectedAssigneeIds = [...selectedAssigneeIds, user.id];
+		}
+		assigneeQuery = '';
+	}
+
+	function removeAssignee(id: string) {
+		selectedAssigneeIds = selectedAssigneeIds.filter((x) => x !== id);
+	}
+
+	function addDependency(task: RichTask) {
+		if (!selectedDependencyIds.includes(task.id)) {
+			selectedDependencyIds = [...selectedDependencyIds, task.id];
+		}
+		dependencyQuery = '';
+	}
+
+	function removeDependency(id: string) {
+		selectedDependencyIds = selectedDependencyIds.filter((x) => x !== id);
+	}
+
 	async function submit() {
 		errorMsg = '';
 		if (!title.trim()) {
@@ -115,6 +163,8 @@
 					all_day: allDay ? 1 : 0,
 					status: 'todo',
 					importance_value: 0,
+					assignee_ids: selectedAssigneeIds,
+					dependency_ids: selectedDependencyIds,
 					tags: selectedTags.map((tag) => ({
 						id: tag.id,
 						tag: tag.tag,
@@ -233,6 +283,82 @@
 							></button>
 						{/each}
 					</div>
+				</div>
+			</div>
+
+			<div class="field">
+				<span class="lbl">Assignees</span>
+				<div class="selected-tags">
+					{#each selectedAssigneeIds as id (id)}
+						{@const user = users.find((item) => item.id === id)}
+						<button type="button" class="tag-chip" onclick={() => removeAssignee(id)}>
+							<MdiIcon path={mdiClose} size={14} />
+							{user?.name ?? id}
+						</button>
+					{/each}
+				</div>
+				<div class="tag-input-wrap">
+					<input
+						class="tag-input"
+						type="text"
+						bind:value={assigneeQuery}
+						placeholder="Add assignee"
+						onkeydown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault();
+								const exact = users.find((user) =>
+									user.name.toLowerCase() === assigneeQuery.trim().toLowerCase()
+								);
+								if (exact) addAssignee(exact);
+							}
+						}}
+					/>
+				</div>
+				<div class="suggestions">
+					{#each assigneeSuggestions as user (user.id)}
+						<button type="button" class="suggestion" onclick={() => addAssignee(user)}>
+							<MdiIcon path={mdiAccountMultipleOutline} size={14} />
+							{user.name}
+						</button>
+					{/each}
+				</div>
+			</div>
+
+			<div class="field">
+				<span class="lbl">Dependencies</span>
+				<div class="selected-tags">
+					{#each selectedDependencyIds as id (id)}
+						{@const task = tasks.find((item) => item.id === id)}
+						<button type="button" class="tag-chip" onclick={() => removeDependency(id)}>
+							<MdiIcon path={mdiLinkVariant} size={14} />
+							{task?.task_name ?? id}
+						</button>
+					{/each}
+				</div>
+				<div class="tag-input-wrap">
+					<input
+						class="tag-input"
+						type="text"
+						bind:value={dependencyQuery}
+						placeholder="Add dependency"
+						onkeydown={(e) => {
+							if (e.key === 'Enter') {
+								e.preventDefault();
+								const exact = tasks.find((task) =>
+									task.task_name.toLowerCase() === dependencyQuery.trim().toLowerCase()
+								);
+								if (exact) addDependency(exact);
+							}
+						}}
+					/>
+				</div>
+				<div class="suggestions">
+					{#each dependencySuggestions as task (task.id)}
+						<button type="button" class="suggestion" onclick={() => addDependency(task)}>
+							<MdiIcon path={mdiLinkVariant} size={14} />
+							{task.task_name}
+						</button>
+					{/each}
 				</div>
 			</div>
 
@@ -367,7 +493,7 @@
 		font: inherit;
 		font-size: 13.5px;
 		color: var(--color-foreground);
-		border: 1px solid #c4c7c5;
+		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		padding: 9px 12px;
 		background: var(--color-background);
@@ -378,14 +504,14 @@
 	}
 	.title-input {
 		border: 0;
-		border-bottom: 1px solid #c4c7c5;
+		border-bottom: 1px solid var(--color-border);
 		border-radius: 0;
 		padding: 8px 2px;
 		font-size: 18px;
 	}
 	.title-input:focus {
 		outline: none;
-		border-bottom-color: #0b57d0;
+		border-bottom-color: var(--color-primary);
 		border-bottom-width: 2px;
 	}
 	.lbl {
@@ -418,7 +544,7 @@
 	.picker {
 		width: 52px;
 		height: 36px;
-		border: 1px solid #c4c7c5;
+		border: 1px solid var(--color-border);
 		border-radius: 10px;
 		background: transparent;
 		padding: 3px;
@@ -434,7 +560,7 @@
 	}
 	.tag-input {
 		flex: 1;
-		border: 1px solid #c4c7c5;
+		border: 1px solid var(--color-border);
 		border-radius: 8px;
 		padding: 9px 12px;
 		background: var(--color-background);
@@ -459,7 +585,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
-		border: 1px solid #c4c7c5;
+		border: 1px solid var(--color-border);
 		border-radius: 999px;
 		padding: 8px 12px;
 		background: var(--color-background);
@@ -479,9 +605,6 @@
 		border: 2px solid transparent;
 		cursor: pointer;
 		padding: 0;
-	}
-	.swatch.selected {
-		/* border-color: #1f1f1f; */
 	}
 
 	.err {

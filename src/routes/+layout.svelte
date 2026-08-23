@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '$lib/assets/index.css';
 	import { onMount } from 'svelte';
-	import { connectWS, getWS } from '$lib/websocket.svelte.js';
+	import { connectWS, getWS } from '$lib/websocket.svelte';
 
 	const builtAt = new Date(__BUILD_DATE).toLocaleString('en-TH', {
 		dateStyle: 'medium',

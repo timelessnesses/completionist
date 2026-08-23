@@ -1,0 +1,100 @@
+import { getDb } from '$lib/server/db/index.js';
+import { task, task_comment } from '$lib/server/db/schema.js';
+import { eq } from 'drizzle-orm';
+import { json, error as svelteError } from '@sveltejs/kit';
+
+type CreateCommentBody = {
+	task_id: string;
+	comment: string;
+};
+
+async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) {
+	return db.query.task.findMany({
+		where: eq(task.id, id),
+		with: {
+			parentTask: true,
+			subtasks: true,
+			assignees: {
+				with: {
+					user: true
+				}
+			},
+			dependencies: {
+				with: {
+					dependency: true
+				}
+			},
+			dependents: {
+				with: {
+					task: true
+				}
+			},
+			comments: {
+				with: {
+					user: true
+				}
+			},
+			attachments: {
+				with: {
+					user: true
+				}
+			},
+			tags: {
+				with: {
+					tag: true
+				}
+			}
+		}
+	});
+}
+
+export const POST = async ({ request, platform, locals }) => {
+	const user = locals.user;
+	if (!user) {
+		throw svelteError(401, 'Unauthorized');
+	}
+
+	let body: CreateCommentBody;
+	try {
+		body = await request.json();
+	} catch {
+		throw svelteError(400, 'Invalid JSON');
+	}
+
+	if (!body?.task_id || typeof body.task_id !== 'string') {
+		throw svelteError(400, 'task_id is required');
+	}
+
+	const text = body.comment?.trim();
+	if (!text) {
+		throw svelteError(400, 'comment is required');
+	}
+
+	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
+	const existing = await db.query.task.findFirst({ where: eq(task.id, body.task_id) });
+	if (!existing) {
+		throw svelteError(404, 'Task not found');
+	}
+
+	await db.insert(task_comment).values({
+		task_id: body.task_id,
+		user_id: user.user_id,
+		comment: text
+	});
+
+	const rows = await fetchTaskWithRelations(db, body.task_id);
+	const updated = rows[0] ?? existing;
+
+	try {
+		const stub = (platform?.env as Env).GlobalWS.getByName('global_ws');
+		await stub.fetch('https://global-ws.internal/broadcast', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ type: 'shouldRefetch' })
+		});
+	} catch {
+		/* best effort */
+	}
+
+	return json(updated, { status: 201 });
+};

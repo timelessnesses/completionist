@@ -50,6 +50,13 @@
       "when": 1787407273662,
       "tag": "0006_luxuriant_maverick",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787496083493,
+      "tag": "0007_illegal_nightmare",
+      "breakpoints": true
     }
   ]
 }

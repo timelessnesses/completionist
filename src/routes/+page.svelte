@@ -20,7 +20,7 @@
 	} from '@mdi/js';
 	import type { PageProps } from './$types';
 	import type { RichTask, UserSummary } from '$lib/mock/data';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { getWS } from '$lib/websocket.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Capacitor } from '@capacitor/core';
@@ -30,9 +30,11 @@
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
 	let createOpen = $state(false);
+	let taskBoardOpen = $state(false);
 	let selectedTaskId = $state<string | null>(null);
 	let taskSearch = $state('');
 	let taskBusy = $state(false);
+	let taskAction = $state<'none' | 'save' | 'toggle' | 'comment' | 'attachment'>('none');
 	let taskError = $state('');
 	let commentDraft = $state('');
 	let tagDraft = $state('');
@@ -61,11 +63,16 @@
 	function closeAll() {
 		railOpen = false;
 		peopleOpen = false;
+		taskBoardOpen = false;
 	}
 
-	const { data }: PageProps = $props();
+	let { data }: PageProps = $props();
 	let events = $state<RichTask[]>(data.event);
-	const upcoming = $derived(events.filter((t) => t.start_at > new Date()));
+	const upcoming = $derived.by(() =>
+		[...(data.upcoming ?? events)]
+			.filter((task) => new Date(task.start_at) >= startOfToday())
+			.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+	);
 	const { filters } = data;
 	const users = (data.users ?? []) as UserSummary[];
 	const viewerId = data.viewerId;
@@ -109,6 +116,32 @@
 		if (selectedTaskId === id) selectedTaskId = null;
 	}
 
+	type TaskActivityItem =
+		| {
+				type: 'comment';
+				id: string;
+				created_at: Date | string;
+				comment: string;
+				user_id: string;
+				user?: UserSummary;
+		  }
+		| {
+				type: 'attachment';
+				id: string;
+				created_at: Date | string;
+				file_name: string;
+				file_url: string;
+				user_id: string;
+				user?: UserSummary;
+		  };
+
+	function openTaskBoard() {
+		taskBoardOpen = true;
+		if (!selectedTaskId) {
+			selectedTaskId = activeTasks.find((task) => !task.completed)?.id ?? activeTasks[0]?.id ?? null;
+		}
+	}
+
 	function rgbToHex(color: { r: number; g: number; b: number }): string {
 		return `#${[color.r, color.g, color.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
 	}
@@ -121,6 +154,11 @@
 			g: parseInt(match[2], 16),
 			b: parseInt(match[3], 16)
 		};
+	}
+
+	function startOfToday(): Date {
+		const now = new Date();
+		return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 	}
 
 	function compareTasks(a: RichTask, b: RichTask): number {
@@ -203,6 +241,7 @@
 	async function saveSelectedTask() {
 		if (!taskDraft.id) return;
 		taskBusy = true;
+		taskAction = 'save';
 		taskError = '';
 		try {
 			const res = await fetch(`/api/events?id=${encodeURIComponent(taskDraft.id)}`, {
@@ -233,12 +272,14 @@
 			taskError = error instanceof Error ? error.message : 'Failed to save task.';
 		} finally {
 			taskBusy = false;
+			taskAction = 'none';
 		}
 	}
 
 	async function toggleTaskComplete(task: RichTask) {
 		if (!canComplete(task)) return;
 		taskBusy = true;
+		taskAction = 'toggle';
 		taskError = '';
 		try {
 			const nextCompleted = task.completed ? null : Date.now();
@@ -261,7 +302,30 @@
 			taskError = error instanceof Error ? error.message : 'Failed to update completion.';
 		} finally {
 			taskBusy = false;
+			taskAction = 'none';
 		}
+	}
+
+	function mergedActivity(task: RichTask): TaskActivityItem[] {
+		return [
+			...(task.comments ?? []).map((comment) => ({
+				type: 'comment' as const,
+				id: comment.id,
+				created_at: comment.created_at,
+				comment: comment.comment,
+				user_id: comment.user_id,
+				user: comment.user
+			})),
+			...(task.attachments ?? []).map((attachment) => ({
+				type: 'attachment' as const,
+				id: attachment.id,
+				created_at: attachment.created_at,
+				file_name: attachment.file_name,
+				file_url: attachment.file_url,
+				user_id: attachment.user_id,
+				user: attachment.user
+			}))
+		].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
 	}
 
 	function addDraftTag() {
@@ -301,41 +365,58 @@
 		taskDraft.assigneeIds = taskDraft.assigneeIds.filter((assigneeId) => assigneeId !== id);
 	}
 
-	function addLocalComment() {
+	async function addLocalComment() {
 		if (!selectedTask || !commentDraft.trim()) return;
-		const author = viewer ?? users[0] ?? null;
-		const nextComment = {
-			id: crypto.randomUUID(),
-			task_id: selectedTask.id,
-			user_id: author?.id ?? viewerId ?? 'local',
-			comment: commentDraft.trim(),
-			created_at: new Date(),
-			user: author ?? undefined
-		};
-		events = events.map((task) =>
-			task.id === selectedTask.id
-				? { ...task, comments: [...(task.comments ?? []), nextComment] }
-				: task
-		);
-		commentDraft = '';
+		taskBusy = true;
+		taskAction = 'comment';
+		try {
+			await tick();
+			const res = await fetch('/api/events/comments', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					task_id: selectedTask.id,
+					comment: commentDraft.trim()
+				})
+			});
+			if (!res.ok) {
+				const text = await res.text().catch(() => '');
+				throw new Error(text || `Request failed (${res.status})`);
+			}
+			const updated = (await res.json()) as RichTask;
+			events = events.map((task) => (task.id === updated.id ? updated : task));
+			selectedTaskId = updated.id;
+			commentDraft = '';
+		} finally {
+			taskBusy = false;
+			taskAction = 'none';
+		}
 	}
 
 	async function addLocalAttachment(file: File) {
 		if (!selectedTask) return;
-		const attachment = {
-			id: crypto.randomUUID(),
-			task_id: selectedTask.id,
-			user_id: viewerId ?? 'local',
-			file_name: file.name,
-			file_url: URL.createObjectURL(file),
-			created_at: new Date(),
-			user: viewer ?? undefined
-		};
-		events = events.map((task) =>
-			task.id === selectedTask.id
-				? { ...task, attachments: [...(task.attachments ?? []), attachment] }
-				: task
-		);
+		taskBusy = true;
+		taskAction = 'attachment';
+		try {
+			await tick();
+			const attachment = {
+				id: crypto.randomUUID(),
+				task_id: selectedTask.id,
+				user_id: viewerId ?? 'local',
+				file_name: file.name,
+				file_url: URL.createObjectURL(file),
+				created_at: new Date(),
+				user: viewer ?? undefined
+			};
+			events = events.map((task) =>
+				task.id === selectedTask.id
+					? { ...task, attachments: [...(task.attachments ?? []), attachment] }
+					: task
+			);
+		} finally {
+			taskBusy = false;
+			taskAction = 'none';
+		}
 	}
 
 	async function requestForNotificationPermission() {
@@ -419,6 +500,8 @@
 			onPeople={() => (peopleOpen = true)}
 			{filters}
 			{events}
+			{users}
+			tasks={events}
 			{viewerId}
 			{isAdmin}
 			{onUpdated}
@@ -440,10 +523,23 @@
 			<MdiIcon path={mdiPlus} size={26} />
 		</button>
 
-		<CreateEventDialog bind:open={createOpen} onevent={onCreated} tags={filters} />
+		<button class="task-fab" aria-label="Open task board" onclick={openTaskBoard}>
+			<MdiIcon path={mdiMagnify} size={18} />
+			<span>Task board</span>
+		</button>
+
+		<CreateEventDialog
+			bind:open={createOpen}
+			onevent={onCreated}
+			tags={filters}
+			users={users}
+			tasks={events}
+		/>
 	</div>
 
-	<section class="task-workbench" aria-label="Task workbench">
+	{#if taskBoardOpen}
+		<div class="task-overlay" aria-hidden="true" onclick={() => (taskBoardOpen = false)}></div>
+		<section class="task-workbench" aria-label="Task workbench">
 		<header class="task-top">
 			<div class="task-titleblock">
 				<p class="eyebrow">Task board</p>
@@ -519,7 +615,11 @@
 								path={selectedTask.completed ? mdiCheckboxMarkedCircleOutline : mdiCircleOutline}
 								size={18}
 							/>
-							{selectedTask.completed ? 'Mark open' : 'Mark done'}
+							{taskBusy && taskAction === 'toggle'
+								? 'Updating...'
+								: selectedTask.completed
+									? 'Mark open'
+									: 'Mark done'}
 						</button>
 					</div>
 
@@ -676,51 +776,66 @@
 							</div>
 						</div>
 
-						<div class="field">
-							<span class="lbl">Comments</span>
-							<div class="comment-list">
-								{#each selectedTask.comments ?? [] as comment (comment.id)}
-									<div class="comment">
-										<div class="comment-head">
-											<strong>{comment.user?.name ?? comment.user_id}</strong>
-											<span>{new Date(comment.created_at).toLocaleString()}</span>
-										</div>
-										<p>{comment.comment}</p>
+						<details class="thread" open>
+							<summary>
+								<span class="lbl">Activity thread</span>
+								<span class="thread-count">{(selectedTask.comments ?? []).length + (selectedTask.attachments ?? []).length}</span>
+							</summary>
+							<div class="thread-body">
+								{#if mergedActivity(selectedTask).length}
+									<div class="comment-list">
+										{#each mergedActivity(selectedTask) as item (item.type + item.id)}
+											<div class="thread-item" class:attachment={item.type === 'attachment'}>
+												<div class="comment-head">
+													<strong>{item.user?.name ?? item.user_id}</strong>
+													<span>{new Date(item.created_at).toLocaleString()}</span>
+												</div>
+												{#if item.type === 'comment'}
+													<p>{item.comment}</p>
+												{:else}
+													<p class="attachment-row">
+														<MdiIcon path={mdiPaperclip} size={14} />
+														<a href={item.file_url} target="_blank" rel="noreferrer">{item.file_name}</a>
+													</p>
+												{/if}
+											</div>
+										{/each}
 									</div>
-								{/each}
+								{:else}
+									<p class="thread-empty">No comments or attachments yet.</p>
+								{/if}
+								<label class="field">
+									<span class="lbl">Write a comment</span>
+									<textarea
+										rows="3"
+										bind:value={commentDraft}
+										placeholder="Write a text comment"
+										disabled={taskBusy}
+									></textarea>
+								</label>
+								<div class="inline-actions">
+									<button
+										type="button"
+										class="mini-btn"
+										disabled={taskBusy || !commentDraft.trim()}
+										onclick={() => void addLocalComment()}
+									>
+										{taskBusy && taskAction === 'comment' ? 'Adding...' : 'Add comment'}
+									</button>
+									<label class="mini-btn file-btn" class:busy={taskBusy}>
+										{taskBusy && taskAction === 'attachment' ? 'Adding...' : 'Attach file'}
+										<input
+											type="file"
+											disabled={taskBusy}
+											onchange={(e) => {
+												const file = (e.currentTarget as HTMLInputElement).files?.[0];
+												if (file) void addLocalAttachment(file);
+											}}
+										/>
+									</label>
+								</div>
 							</div>
-							<textarea
-								rows="3"
-								bind:value={commentDraft}
-								placeholder="Write a text comment"
-								disabled={taskBusy}
-							></textarea>
-							<div class="inline-actions">
-								<button type="button" class="mini-btn" onclick={addLocalComment}>Add comment</button>
-							</div>
-						</div>
-
-						<div class="field">
-							<span class="lbl">Attachments</span>
-							<div class="comment-list">
-								{#each selectedTask.attachments ?? [] as attachment (attachment.id)}
-									<div class="attachment">
-										<MdiIcon path={mdiPaperclip} size={14} />
-										<a href={attachment.file_url} target="_blank" rel="noreferrer">
-											{attachment.file_name}
-										</a>
-									</div>
-								{/each}
-							</div>
-							<input
-								type="file"
-								disabled={taskBusy}
-								onchange={(e) => {
-									const file = (e.currentTarget as HTMLInputElement).files?.[0];
-									if (file) void addLocalAttachment(file);
-								}}
-							/>
-						</div>
+						</details>
 
 						{#if taskError}
 							<p class="error">{taskError}</p>
@@ -734,7 +849,7 @@
 							</div>
 							<button class="save-btn" type="submit" disabled={taskBusy}>
 								<MdiIcon path={mdiContentSave} size={16} />
-								{taskBusy ? 'Saving...' : 'Save task'}
+								{taskBusy && taskAction === 'save' ? 'Saving...' : 'Save task'}
 							</button>
 						</footer>
 					</form>
@@ -747,31 +862,79 @@
 				{/if}
 			</article>
 		</div>
-	</section>
+			<button class="task-close" aria-label="Close task board" onclick={() => (taskBoardOpen = false)}>
+				<MdiIcon path={mdiClose} size={20} />
+			</button>
+		</section>
+	{/if}
 </div>
 
 <style>
 	.page {
 		display: flex;
 		flex-direction: column;
-		min-height: 100%;
+		min-height: 100vh;
 		background:
-			radial-gradient(circle at top left, rgba(11, 87, 208, 0.08), transparent 35%),
-			linear-gradient(180deg, #f8fafd 0%, #eef3fb 100%);
+			radial-gradient(circle at top left, color-mix(in oklch, var(--color-primary) 12%, transparent), transparent 35%),
+			linear-gradient(180deg, var(--color-background) 0%, color-mix(in oklch, var(--color-background) 90%, var(--color-card) 10%) 100%);
+		color: var(--color-foreground);
 	}
 	.shell {
 		display: flex;
 		flex: 1;
 		min-height: 0;
-		overflow: hidden;
+		overflow: visible;
 		background: transparent;
 	}
 	.task-workbench {
+		position: fixed;
+		inset: 24px 24px 24px auto;
+		width: min(1180px, calc(100vw - 48px));
+		max-width: calc(100vw - 48px);
+		background: color-mix(in oklch, var(--color-card) 92%, transparent);
+		border: 1px solid var(--color-border);
+		border-radius: 24px;
+		box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+		backdrop-filter: blur(16px);
 		padding: 18px 18px 24px;
-		border-top: 1px solid rgba(122, 134, 152, 0.22);
-		background: rgba(255, 255, 255, 0.82);
-		backdrop-filter: blur(12px);
-		box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.05);
+		overflow: auto;
+		z-index: 55;
+	}
+	.task-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 50;
+		background: rgba(15, 23, 42, 0.42);
+	}
+	.task-close {
+		position: absolute;
+		top: 14px;
+		right: 14px;
+		border: 0;
+		border-radius: 999px;
+		width: 36px;
+		height: 36px;
+		display: grid;
+		place-items: center;
+		background: var(--color-muted);
+		color: var(--color-foreground);
+		cursor: pointer;
+	}
+	.task-fab {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		position: fixed;
+		left: 16px;
+		bottom: 16px;
+		z-index: 45;
+		border: 0;
+		border-radius: 999px;
+		padding: 12px 16px;
+		background: var(--color-primary);
+		color: var(--color-primary-foreground);
+		box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+		cursor: pointer;
 	}
 	.task-top {
 		display: flex;
@@ -791,11 +954,11 @@
 		letter-spacing: 0.14em;
 		font-size: 11px;
 		font-weight: 700;
-		color: #5f6368;
+		color: var(--color-muted-foreground);
 	}
 	.sub {
 		margin: 0;
-		color: #5f6368;
+		color: var(--color-muted-foreground);
 		font-size: 13px;
 	}
 	.search {
@@ -804,9 +967,9 @@
 		gap: 8px;
 		min-width: min(360px, 100%);
 		padding: 0 12px;
-		border: 1px solid rgba(95, 99, 104, 0.18);
+		border: 1px solid var(--color-border);
 		border-radius: 16px;
-		background: rgba(255, 255, 255, 0.9);
+		background: var(--color-card);
 		box-shadow: 0 8px 26px rgba(15, 23, 42, 0.04);
 	}
 	.search input {
@@ -816,7 +979,7 @@
 		outline: none;
 		font: inherit;
 		padding: 14px 0;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
 	.task-grid {
 		display: grid;
@@ -826,16 +989,16 @@
 	}
 	.task-list,
 	.task-detail {
-		border: 1px solid rgba(95, 99, 104, 0.14);
+		border: 1px solid var(--color-border);
 		border-radius: 22px;
-		background: rgba(255, 255, 255, 0.92);
+		background: var(--color-card);
 		box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
 	}
 	.task-list {
 		display: grid;
 		gap: 10px;
 		padding: 12px;
-		max-height: 42vh;
+		max-height: calc(100dvh - 220px);
 		overflow: auto;
 	}
 	.task-pill {
@@ -846,7 +1009,7 @@
 		border: 1px solid transparent;
 		border-radius: 18px;
 		padding: 12px 14px;
-		background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+		background: color-mix(in oklch, var(--color-card) 96%, var(--color-background));
 		text-align: left;
 		cursor: pointer;
 		transition:
@@ -860,8 +1023,8 @@
 		box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 	}
 	.task-pill.selected {
-		border-color: rgba(11, 87, 208, 0.45);
-		box-shadow: 0 0 0 4px rgba(11, 87, 208, 0.08);
+		border-color: color-mix(in oklch, var(--color-primary) 45%, transparent);
+		box-shadow: 0 0 0 4px color-mix(in oklch, var(--color-primary) 12%, transparent);
 	}
 	.task-pill.completed {
 		opacity: 0.55;
@@ -889,7 +1052,7 @@
 	}
 	.pill-meta {
 		font-size: 12px;
-		color: #5f6368;
+		color: var(--color-muted-foreground);
 	}
 	.pill-tags {
 		gap: 6px;
@@ -900,16 +1063,16 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
-		border: 1px solid rgba(95, 99, 104, 0.18);
+		border: 1px solid var(--color-border);
 		border-radius: 999px;
 		padding: 7px 10px;
-		background: #fff;
-		color: #1f1f1f;
+		background: var(--color-background);
+		color: var(--color-foreground);
 		font-size: 12px;
 	}
 	.pill-note {
 		font-size: 12px;
-		color: #5f6368;
+		color: var(--color-muted-foreground);
 	}
 	.task-detail {
 		padding: 16px;
@@ -938,17 +1101,30 @@
 		cursor: pointer;
 	}
 	.ghost-toggle {
-		background: #eef3fb;
-		color: #0b57d0;
+		background: color-mix(in oklch, var(--color-primary) 12%, var(--color-card));
+		color: var(--color-primary);
 	}
 	.save-btn {
-		background: #0b57d0;
-		color: #fff;
+		background: var(--color-primary);
+		color: var(--color-primary-foreground);
 		margin-left: auto;
 	}
 	.mini-btn {
-		background: #e8f0fe;
-		color: #0b57d0;
+		background: color-mix(in oklch, var(--color-primary) 10%, var(--color-card));
+		color: var(--color-primary);
+	}
+	.file-btn {
+		position: relative;
+		overflow: hidden;
+	}
+	.file-btn input {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.file-btn.busy {
+		pointer-events: none;
 	}
 	.detail-form {
 		display: flex;
@@ -964,11 +1140,11 @@
 	.field textarea,
 	.inline-add input {
 		font: inherit;
-		border: 1px solid rgba(95, 99, 104, 0.22);
+		border: 1px solid var(--color-border);
 		border-radius: 14px;
 		padding: 10px 12px;
-		background: #fff;
-		color: #1f1f1f;
+		background: var(--color-background);
+		color: var(--color-foreground);
 	}
 	.field textarea {
 		resize: vertical;
@@ -976,7 +1152,7 @@
 	.lbl {
 		font-size: 12px;
 		font-weight: 600;
-		color: #5f6368;
+		color: var(--color-muted-foreground);
 	}
 	.grid2 {
 		display: grid;
@@ -986,10 +1162,10 @@
 	.picker {
 		width: 54px;
 		height: 40px;
-		border: 1px solid rgba(95, 99, 104, 0.22);
+		border: 1px solid var(--color-border);
 		border-radius: 12px;
 		padding: 3px;
-		background: #fff;
+		background: var(--color-background);
 	}
 	.chip-row,
 	.suggestions,
@@ -1008,12 +1184,43 @@
 	.comment-list {
 		flex-direction: column;
 	}
-	.comment,
-	.attachment {
-		border: 1px solid rgba(95, 99, 104, 0.12);
-		border-radius: 14px;
-		padding: 10px 12px;
-		background: #fafcff;
+	.thread {
+		border: 1px solid var(--color-border);
+		border-radius: 16px;
+		background: var(--color-muted);
+		overflow: hidden;
+	}
+	.thread summary {
+		list-style: none;
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 12px 14px;
+		cursor: pointer;
+	}
+	.thread summary::-webkit-details-marker {
+		display: none;
+	}
+	.thread-count {
+		min-width: 1.75rem;
+		padding: 2px 8px;
+		border-radius: 999px;
+		background: var(--color-background);
+		color: var(--color-foreground);
+		font-size: 12px;
+		text-align: center;
+	}
+	.thread-body {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+		padding: 0 14px 14px;
+	}
+	.thread-empty {
+		margin: 0;
+		font-size: 13px;
+		color: var(--color-muted-foreground);
 	}
 	.comment-head {
 		display: flex;
@@ -1021,19 +1228,29 @@
 		justify-content: space-between;
 		gap: 10px;
 		font-size: 12px;
-		color: #5f6368;
+		color: var(--color-muted-foreground);
 	}
-	.comment p {
-		margin: 8px 0 0;
-	}
-	.attachment {
+	.thread-item {
 		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 10px 12px;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		background: var(--color-background);
+	}
+	.thread-item.attachment {
+		border-style: dashed;
+	}
+	.attachment-row {
+		display: inline-flex;
 		align-items: center;
-		gap: 8px;
+		gap: 6px;
+		margin: 0;
 	}
 	.error {
 		margin: 0;
-		color: #b3261e;
+		color: var(--color-danger);
 	}
 	.task-foot {
 		display: flex;
@@ -1043,7 +1260,7 @@
 		padding-top: 4px;
 	}
 	.task-foot .meta {
-		color: #5f6368;
+		color: var(--color-muted-foreground);
 		font-size: 12px;
 	}
 	.empty-task {
@@ -1051,15 +1268,19 @@
 		display: grid;
 		place-items: center;
 		text-align: center;
-		color: #5f6368;
-		border: 1px dashed rgba(95, 99, 104, 0.22);
+		color: var(--color-muted-foreground);
+		border: 1px dashed var(--color-border);
 		border-radius: 18px;
-		background: linear-gradient(180deg, rgba(255, 255, 255, 0.65), rgba(248, 250, 253, 0.92));
+		background: linear-gradient(
+			180deg,
+			color-mix(in oklch, var(--color-card) 80%, transparent),
+			color-mix(in oklch, var(--color-background) 96%, var(--color-card) 4%)
+		);
 		padding: 24px;
 	}
 	.empty-task h3 {
 		margin: 8px 0 4px;
-		color: #1f1f1f;
+		color: var(--color-foreground);
 	}
 	.tag-dot {
 		width: 10px;
@@ -1072,12 +1293,9 @@
 	:global(body) {
 		margin: 0;
 		height: 100%;
-		font-family: 'Google Sans', 'Roboto', 'Segoe UI', Arial, sans-serif;
-		--mdc-theme-primary: #0b57d0;
-		--mdc-theme-secondary: #0b57d0;
-		--mdc-theme-on-primary: #ffffff;
-		background: #f8fafd;
-		color: #1f1f1f;
+		font-family: var(--font-sans);
+		background: var(--color-background);
+		color: var(--color-foreground);
 	}
 	:global(*),
 	:global(*::before),
@@ -1113,7 +1331,7 @@
 			top: 0;
 			bottom: 0;
 			z-index: 40;
-			background: #f8fafd;
+			background: var(--color-background);
 			transition: transform 0.24s ease;
 		}
 		.dock.left {
@@ -1146,11 +1364,11 @@
 			border-radius: 50%;
 			border: 0;
 			background: none;
-			color: #444746;
+			color: var(--color-foreground);
 			cursor: pointer;
 		}
 		.close:hover {
-			background: #eef2f7;
+			background: var(--color-muted);
 		}
 		.scrim {
 			display: block;
@@ -1174,14 +1392,17 @@
 			border-radius: 16px;
 			border: 0;
 			cursor: pointer;
-			background: #c2e7ff;
-			color: #001d35;
+			background: var(--color-primary);
+			color: var(--color-primary-foreground);
 			box-shadow: 0 4px 10px rgba(0, 0, 0, 0.22);
 		}
 		.fab:active {
 			filter: brightness(0.95);
 		}
 		.task-workbench {
+			inset: 12px;
+			width: auto;
+			max-width: none;
 			padding: 14px;
 		}
 		.task-top {

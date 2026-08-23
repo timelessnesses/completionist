@@ -63,7 +63,9 @@ export const load = async ({ params, request, platform, locals }) => {
 
 	return {
 		event: tasks,
-		upcoming: tasks.filter((t) => t.start_at > new Date()),
+		upcoming: tasks
+			.filter((t) => t.start_at >= startOfToday())
+			.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at)),
 		filters,
 		users,
 		isOwner: isAdmin,
@@ -74,4 +76,9 @@ export const load = async ({ params, request, platform, locals }) => {
 
 function getMonthFromDate(date: Date, forward: number): Date {
 	return new Date(date.getFullYear(), date.getMonth() + forward, 1);
+}
+
+function startOfToday(): Date {
+	const now = new Date();
+	return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }

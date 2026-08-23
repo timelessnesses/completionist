@@ -1,8 +1,10 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { WEEKDAYS, toKey, isSameDay, addDays, startOfWeek, hourLabel } from '$lib/calendar';
+import { onMount } from 'svelte';
+import { WEEKDAYS, toKey, isSameDay, addDays, startOfWeek, hourLabel } from '$lib/calendar';
+import MdiIcon from './MdiIcon.svelte';
+import { mdiCheckboxMarkedCircleOutline, mdiTriangleOutline } from '@mdi/js';
 
-	import { type CalendarEvent } from '$lib/mock/data';
+import type { RichTask } from '$lib/mock/data';
 
 	let {
 		viewDate,
@@ -12,10 +14,10 @@
 		onSelectEvent
 	}: {
 		viewDate: Date;
-		events: CalendarEvent[];
+		events: RichTask[];
 		windowHours?: number;
 		followCurrentTime?: boolean;
-		onSelectEvent?: (ev: CalendarEvent) => void;
+		onSelectEvent?: (ev: RichTask) => void;
 	} = $props();
 
 	let colWidthPx = $state<number | null>(null);
@@ -38,7 +40,7 @@
 	const weekStart = $derived(startOfWeek(viewDate));
 	const days = $derived(Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)));
 	const eventsByDay = $derived.by(() => {
-		const map = new Map<string, CalendarEvent[]>();
+		const map = new Map<string, RichTask[]>();
 		for (const ev of events) {
 			if (ev.completed) continue;
 			const start = new Date(ev.start_at);
@@ -98,9 +100,13 @@
 		return (eventsByDay.get(key) ?? []).filter((ev) => !!ev.all_day && !ev.completed);
 	}
 
-	function timeLabel(ev: CalendarEvent): string {
+	function timeLabel(ev: RichTask): string {
 		const d = new Date(ev.start_at);
 		return `${d.getHours()}:${`${d.getMinutes()}`.padStart(2, '0')}`;
+	}
+
+	function hasDependents(ev: RichTask): boolean {
+		return (ev.dependents?.length ?? 0) > 0;
 	}
 
 	/** Current-time "now" line vertical position (px) within the 24-hour grid. */
@@ -284,7 +290,18 @@
 								onclick={() => onSelectEvent?.(t.ev)}
 							>
 								<span class="ev-title">{t.ev.task_name}</span>
-								<span class="ev-time">{timeLabel(t.ev)}</span>
+								<span class="ev-indicators">
+									{#if t.ev.completed}
+										<span class="event-status done" aria-hidden="true">
+											<MdiIcon path={mdiCheckboxMarkedCircleOutline} size={14} />
+										</span>
+									{:else if hasDependents(t.ev)}
+										<span class="event-status blocked" aria-hidden="true">
+											<MdiIcon path={mdiTriangleOutline} size={14} />
+										</span>
+									{/if}
+									<span class="ev-time">{timeLabel(t.ev)}</span>
+								</span>
 							</button>
 						{/each}
 					</div>
@@ -470,8 +487,8 @@
 		right: 2px;
 		height: calc(var(--hour-h) + 1px);
 		display: flex;
-		flex-direction: column;
-		gap: 1px;
+		align-items: center;
+		gap: 8px;
 		border: 0;
 		border-radius: 6px;
 		padding: 3px 5px;
@@ -480,6 +497,8 @@
 		overflow: hidden;
 	}
 	.ev-title {
+		flex: 1;
+		min-width: 0;
 		font-size: 11px;
 		font-weight: 600;
 		white-space: nowrap;
@@ -487,10 +506,22 @@
 		text-overflow: ellipsis;
 		color: var(--color-foreground);
 	}
+	.ev-indicators {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		flex-shrink: 0;
+	}
 	.ev-time {
 		font-size: 10px;
 		opacity: 0.85;
 		color: var(--color-foreground);
+	}
+	.event-status.done {
+		color: #188038;
+	}
+	.event-status.blocked {
+		color: #d93025;
 	}
 
 	@media (max-width: 860px) {
@@ -522,9 +553,13 @@
 			right: 1px;
 			padding: 2px 3px;
 			border-radius: 4px;
+			gap: 4px;
 		}
 		.ev-title {
 			font-size: 9.5px;
+		}
+		.ev-indicators {
+			gap: 4px;
 		}
 		.ev-time {
 			display: none;

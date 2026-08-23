@@ -123,7 +123,7 @@ export class GlobalWS extends DurableObject {
 			return users.map((u) => ({
 				id: u.id,
 				name: u.name,
-				owner: false,
+				owner: !!u.owner,
 				status: onlineIds.has(u.id) ? 'Active' : 'Offline',
 				avatar: u.profile_picture_url
 			}));
@@ -147,16 +147,7 @@ export class GlobalWS extends DurableObject {
 			this.broadcast(JSON.stringify({ type: 'new_calendar_event', event: data.event }), ws);
 		} else if (ws.deserializeAttachment()?.user_id) {
 			if (data.type === 'online_users') {
-				ws.send(
-					JSON.stringify({
-						type: 'online_users',
-						users: Array.from(
-							this.ctx.getWebSockets().map((a) => {
-								return a.deserializeAttachment() as { user_id: string };
-							})
-						).map((session) => session.user_id)
-					})
-				);
+				this.sendCurrentPeople(ws);
 			} else if (data.type === 'user_sends_message') {
 				this.ctx
 					.getWebSockets()
