@@ -1,12 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
 import { getDb } from '../server/db/index';
-import { verifyJWT } from '$lib/auth';
-
-type LoginRequest = {
-	type: 'login';
-	jwt: string;
-};
-
 type OnlineUsersRequest = {
 	type: 'online_users';
 };
@@ -20,11 +13,32 @@ type PreviewSubscribeRequest = {
 	type: 'preview_subscribe';
 };
 
-type PossibleRequest = LoginRequest | OnlineUsersRequest | Heartbeat | PreviewSubscribeRequest;
+type PossibleRequest = OnlineUsersRequest | Heartbeat | PreviewSubscribeRequest;
 
 type ClientSession = {
 	user_id?: string;
 	preview?: boolean;
+};
+
+type DirectMessageEvent = {
+	type: 'direct_message';
+	message: {
+		id: string;
+		from_user_id: string;
+		to_user_id: string;
+		message: string | null;
+		created_at: string | number | Date;
+		from_user?: { id: string; name: string; profile_picture_url?: string | null };
+		to_user?: { id: string; name: string; profile_picture_url?: string | null };
+		attachments?: Array<{
+			id: string;
+			file_name: string;
+			file_url: string;
+			file_key: string;
+			content_type?: string | null;
+			size?: number | null;
+		}>;
+	};
 };
 
 export class GlobalWS extends DurableObject {
@@ -48,6 +62,14 @@ export class GlobalWS extends DurableObject {
 		if (url.pathname.endsWith('/broadcast') && request.method === 'POST') {
 			await request.text().catch(() => '');
 			this.broadcastShouldRefetch();
+			return new Response('ok', { status: 200 });
+		}
+		if (url.pathname.endsWith('/direct-message') && request.method === 'POST') {
+			const payload = (await request.json()) as DirectMessageEvent;
+			if (payload?.type !== 'direct_message' || !payload.message) {
+				return new Response('missing direct message', { status: 400 });
+			}
+			this.broadcastDirectMessage(payload);
 			return new Response('ok', { status: 200 });
 		}
 		if (request.headers.get('Upgrade') !== 'websocket') {
@@ -79,6 +101,19 @@ export class GlobalWS extends DurableObject {
 
 	broadcastShouldRefetch(exclude?: WebSocket) {
 		this.broadcastJSON({ type: 'shouldRefetch' }, exclude);
+	}
+
+	broadcastDirectMessage(payload: DirectMessageEvent) {
+		const participantIds = new Set([payload.message.from_user_id, payload.message.to_user_id]);
+		this.ctx.getWebSockets().forEach((socket) => {
+			const session = socket.deserializeAttachment() as ClientSession | null;
+			if (!session?.user_id || !participantIds.has(session.user_id)) return;
+			try {
+				socket.send(JSON.stringify(payload));
+			} catch {
+				/* ignore */
+			}
+		});
 	}
 
 	async sendCurrentPeople(ws: WebSocket) {
@@ -132,13 +167,7 @@ export class GlobalWS extends DurableObject {
 			return;
 		}
 
-		if (data.type === 'login') {
-			const { user_id } = await verifyJWT(data.jwt, this.env);
-			ws.send(JSON.stringify({ type: 'user_connected', user_id }));
-			ws.serializeAttachment({ user_id });
-			await this.sendCurrentPeople(ws);
-			await this.broadcastPeople();
-		} else if (data.type === 'preview_subscribe') {
+		if (data.type === 'preview_subscribe') {
 			ws.serializeAttachment({ preview: true });
 			ws.send(JSON.stringify({ type: 'preview_subscribed' }));
 		} else if (data.type === 'online_users') {

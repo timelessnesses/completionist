@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Button, { Label } from '@smui/button';
-	import List, { Item, Graphic, Text as LText } from '@smui/list';
 	import {
 		mdiShareVariantOutline,
 		mdiCogOutline,
@@ -11,19 +10,56 @@
 		mdiLogout,
 		mdiWeatherNight,
 		mdiWhiteBalanceSunny,
-		mdiChevronRight
+		mdiChevronRight,
+		mdiSend,
+		mdiPaperclip,
+		mdiDownloadOutline,
+		mdiMessageTextOutline
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import type { Person } from '$lib/mock/data';
 	import { getWS } from '$lib/websocket.svelte';
 	import { onMount } from 'svelte';
 
-	let { isOwner = false }: { isOwner?: boolean } = $props();
+	let { isOwner = false, viewerId = null }: { isOwner?: boolean; viewerId?: string | null } =
+		$props();
+
+	type ChatAttachment = {
+		id?: string;
+		file_name: string;
+		file_url: string;
+		file_key: string;
+		content_type?: string | null;
+		size?: number | null;
+		created_at?: number | string | Date;
+	};
+
+	type DirectMessage = {
+		id: string;
+		from_user_id: string;
+		to_user_id: string;
+		message: string | null;
+		created_at: number | string | Date;
+		from_user?: { id: string; name: string; profile_picture_url?: string | null };
+		to_user?: { id: string; name: string; profile_picture_url?: string | null };
+		attachments: ChatAttachment[];
+	};
 
 	let people: Person[] = $state([]);
 	let shareOpen = $state(false);
 	let settingsOpen = $state(false);
 	let copied = $state(false);
+	let chatOpen = $state(false);
+	let selectedPerson = $state<Person | null>(null);
+	let chatMessages = $state<Record<string, DirectMessage[]>>({});
+	let unreadByUser = $state<Record<string, number>>({});
+	let chatDraft = $state('');
+	let chatFiles = $state<File[]>([]);
+	let chatBusy = $state(false);
+	let chatLoading = $state(false);
+	let chatError = $state('');
+	let chatLoaded = $state<Record<string, boolean>>({});
+	const activeMessages = $derived(selectedPerson ? (chatMessages[selectedPerson.id] ?? []) : []);
 
 	// ---- Theme ----
 	type Theme = 'system' | 'light' | 'dark';
@@ -99,6 +135,163 @@
 		people = dedupe(next);
 	}
 
+	function messagePeerId(message: DirectMessage): string | null {
+		if (!viewerId) return null;
+		if (message.from_user_id === viewerId) return message.to_user_id;
+		if (message.to_user_id === viewerId) return message.from_user_id;
+		return null;
+	}
+
+	function upsertMessage(message: DirectMessage) {
+		const peerId = messagePeerId(message);
+		if (!peerId) return;
+		const existing = chatMessages[peerId] ?? [];
+		const next = existing.some((item) => item.id === message.id)
+			? existing.map((item) => (item.id === message.id ? message : item))
+			: [...existing, message];
+		chatMessages = {
+			...chatMessages,
+			[peerId]: next.sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at))
+		};
+		if (message.from_user_id !== viewerId && (!chatOpen || selectedPerson?.id !== peerId)) {
+			unreadByUser = { ...unreadByUser, [peerId]: (unreadByUser[peerId] ?? 0) + 1 };
+		}
+	}
+
+	async function openChat(person: Person) {
+		if (person.id === viewerId) return;
+		selectedPerson = person;
+		chatOpen = true;
+		unreadByUser = { ...unreadByUser, [person.id]: 0 };
+		if (chatLoaded[person.id]) return;
+
+		chatLoading = true;
+		chatError = '';
+		try {
+			const res = await fetch(`/api/direct-messages?user_id=${encodeURIComponent(person.id)}`);
+			if (!res.ok) {
+				const text = await res.text().catch(() => '');
+				throw new Error(text || `Request failed (${res.status})`);
+			}
+			const messages = (await res.json()) as DirectMessage[];
+			chatMessages = { ...chatMessages, [person.id]: messages };
+			chatLoaded = { ...chatLoaded, [person.id]: true };
+		} catch (error) {
+			chatError = error instanceof Error ? error.message : 'Failed to load messages.';
+		} finally {
+			chatLoading = false;
+		}
+	}
+
+	function closeChat() {
+		chatOpen = false;
+		selectedPerson = null;
+		chatDraft = '';
+		chatFiles = [];
+		chatError = '';
+	}
+
+	function onPickFiles(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		chatFiles = [...chatFiles, ...Array.from(input.files ?? [])].slice(0, 6);
+		input.value = '';
+	}
+
+	function removePickedFile(index: number) {
+		chatFiles = chatFiles.filter((_, i) => i !== index);
+	}
+
+	async function uploadChatFile(file: File): Promise<ChatAttachment> {
+		const key = `direct-messages/${viewerId ?? 'anonymous'}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+		const presignRes = await fetch('/api/files', {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				key,
+				contentType: file.type || 'application/octet-stream'
+			})
+		});
+		if (!presignRes.ok) {
+			const text = await presignRes.text().catch(() => '');
+			throw new Error(text || `Could not prepare upload (${presignRes.status})`);
+		}
+		const presign = (await presignRes.json()) as { url: string };
+		const uploadRes = await fetch(presign.url, {
+			method: 'PUT',
+			headers: { 'Content-Type': file.type || 'application/octet-stream' },
+			body: file
+		});
+		if (!uploadRes.ok) {
+			throw new Error(`Upload failed (${uploadRes.status})`);
+		}
+		return {
+			file_name: file.name,
+			file_key: key,
+			file_url: `/api/files?key=${encodeURIComponent(key)}`,
+			content_type: file.type || null,
+			size: file.size
+		};
+	}
+
+	async function sendChatMessage() {
+		if (!selectedPerson || chatBusy) return;
+		const text = chatDraft.trim();
+		if (!text && chatFiles.length === 0) return;
+
+		chatBusy = true;
+		chatError = '';
+		try {
+			const attachments = [];
+			for (const file of chatFiles) {
+				attachments.push(await uploadChatFile(file));
+			}
+			const res = await fetch('/api/direct-messages', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					to_user_id: selectedPerson.id,
+					message: text || null,
+					attachments
+				})
+			});
+			if (!res.ok) {
+				const responseText = await res.text().catch(() => '');
+				throw new Error(responseText || `Request failed (${res.status})`);
+			}
+			const saved = (await res.json()) as DirectMessage;
+			upsertMessage(saved);
+			chatDraft = '';
+			chatFiles = [];
+		} catch (error) {
+			chatError = error instanceof Error ? error.message : 'Failed to send message.';
+		} finally {
+			chatBusy = false;
+		}
+	}
+
+	async function openAttachment(attachment: ChatAttachment) {
+		try {
+			const key = attachment.file_key || attachment.file_url.split('key=')[1] || '';
+			const res = await fetch(`/api/files?key=${encodeURIComponent(decodeURIComponent(key))}`);
+			if (!res.ok) return;
+			const body = (await res.json()) as { url?: string };
+			if (body.url) window.open(body.url, '_blank', 'noreferrer');
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function safeFileName(name: string) {
+		return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 96) || 'attachment';
+	}
+
+	function prettyBytes(size?: number | null) {
+		if (!size) return '';
+		if (size < 1024) return `${size} B`;
+		if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+		return `${(size / 1024 / 1024).toFixed(1)} MB`;
+	}
+
 	onMount(() => {
 		let ws: WebSocket | undefined;
 		let disposed = false;
@@ -116,6 +309,8 @@
 				upsertPeople([{ id: data.user_id, name: 'Someone', status: 'Active' }]);
 			} else if (data.type === 'user_disconnected' && data.user_id) {
 				people = people.map((p) => (p.id === data.user_id ? { ...p, status: 'Offline' } : p));
+			} else if (data.type === 'direct_message' && data.message) {
+				upsertMessage(data.message as DirectMessage);
 			}
 		};
 
@@ -174,21 +369,146 @@
 		</span>
 	</header>
 
-	<List dense class="people-list">
+	<div class="people-list">
 		{#each people as p (p.id)}
-			<Item nonInteractive>
-				<Graphic class="avatar">{p.name.slice(-1)}</Graphic>
-				<LText>
+			<button
+				type="button"
+				class="person-row"
+				class:self={p.id === viewerId}
+				disabled={p.id === viewerId}
+				onclick={() => void openChat(p)}
+			>
+				<span class="avatar">
+					{#if p.avatar}
+						<img src={p.avatar} alt="" />
+					{:else}
+						{p.name.slice(0, 1)}
+					{/if}
+				</span>
+				<span class="person-text">
 					<span class="pname">{p.name}</span>
 					<span class="prole">
 						{p.owner ? ' · Owner' : ''} ·
 						<span class:active={p.status === 'Active'}>{p.status}</span>
 					</span>
-				</LText>
-			</Item>
+				</span>
+				{#if unreadByUser[p.id]}
+					<span class="unread">{unreadByUser[p.id]}</span>
+				{:else if p.id !== viewerId}
+					<MdiIcon path={mdiMessageTextOutline} size={16} />
+				{/if}
+			</button>
 		{/each}
-	</List>
+	</div>
 </aside>
+
+{#if chatOpen && selectedPerson}
+	<button class="scrim" aria-label="Close chat" onclick={closeChat}></button>
+	<div
+		class="chat-dialog"
+		role="dialog"
+		aria-modal="true"
+		aria-label={`Chat with ${selectedPerson.name}`}
+	>
+		<header class="chat-head">
+			<div class="chat-title">
+				<span class="avatar large">
+					{#if selectedPerson.avatar}
+						<img src={selectedPerson.avatar} alt="" />
+					{:else}
+						{selectedPerson.name.slice(0, 1)}
+					{/if}
+				</span>
+				<div>
+					<h2>{selectedPerson.name}</h2>
+					<p>{selectedPerson.status ?? 'Offline'}</p>
+				</div>
+			</div>
+			<button class="x" aria-label="Close chat" onclick={closeChat}>
+				<MdiIcon path={mdiClose} size={18} />
+			</button>
+		</header>
+
+		<div class="chat-body">
+			{#if chatLoading}
+				<p class="empty-chat">Loading messages...</p>
+			{:else if activeMessages.length === 0}
+				<p class="empty-chat">No messages yet.</p>
+			{:else}
+				{#each activeMessages as message (message.id)}
+					<article class="bubble" class:mine={message.from_user_id === viewerId}>
+						{#if message.message}
+							<p>{message.message}</p>
+						{/if}
+						{#if message.attachments?.length}
+							<div class="attachment-list">
+								{#each message.attachments as attachment (attachment.id ?? attachment.file_key)}
+									<button
+										type="button"
+										class="attachment"
+										onclick={() => void openAttachment(attachment)}
+									>
+										<MdiIcon path={mdiDownloadOutline} size={14} />
+										<span>{attachment.file_name}</span>
+										<small>{prettyBytes(attachment.size)}</small>
+									</button>
+								{/each}
+							</div>
+						{/if}
+						<time>{new Date(message.created_at).toLocaleString()}</time>
+					</article>
+				{/each}
+			{/if}
+		</div>
+
+		{#if chatFiles.length}
+			<div class="picked-files">
+				{#each chatFiles as file, index (`${file.name}-${file.size}-${index}`)}
+					<button type="button" onclick={() => removePickedFile(index)}>
+						<MdiIcon path={mdiClose} size={12} />
+						{file.name}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		{#if chatError}
+			<p class="chat-error">{chatError}</p>
+		{/if}
+
+		<form
+			class="chat-form"
+			onsubmit={(event) => {
+				event.preventDefault();
+				void sendChatMessage();
+			}}
+		>
+			<label class="attach-btn" aria-label="Attach files">
+				<MdiIcon path={mdiPaperclip} size={18} />
+				<input type="file" multiple disabled={chatBusy} onchange={onPickFiles} />
+			</label>
+			<textarea
+				rows="2"
+				placeholder="Message"
+				bind:value={chatDraft}
+				disabled={chatBusy}
+				onkeydown={(event) => {
+					if (event.key === 'Enter' && !event.shiftKey) {
+						event.preventDefault();
+						void sendChatMessage();
+					}
+				}}></textarea>
+			<button
+				class="send-btn"
+				type="submit"
+				disabled={chatBusy || (!chatDraft.trim() && chatFiles.length === 0)}
+				aria-label="Send message"
+			>
+				<MdiIcon path={mdiSend} size={18} />
+			</button>
+		</form>
+	</div>
+{/if}
 
 {#if shareOpen}
 	<button class="scrim" aria-label="Close share" onclick={() => (shareOpen = false)}></button>
@@ -295,14 +615,6 @@
 		border-radius: 12px;
 		font-size: 12px;
 		color: var(--color-muted-foreground);
-	}
-	.panel p :global(.settings-card) {
-		margin: 6px 0 0;
-		line-height: 1.45;
-	}
-	.panel strong :global(.settings-card) {
-		font-size: 12.5px;
-		color: var(--color-foreground);
 	}
 
 	.head {
@@ -444,11 +756,55 @@
 		color: var(--color-danger);
 	}
 
-	.panel :global(.people-list) {
+	.people-list {
 		background: transparent;
 		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
 	}
-	.panel :global(.avatar) {
+	.person-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		width: 100%;
+		border: 0;
+		border-radius: 10px;
+		padding: 8px 10px;
+		background: transparent;
+		color: var(--color-foreground);
+		text-align: left;
+		cursor: pointer;
+	}
+	.person-row:hover {
+		background: var(--color-muted);
+	}
+	.person-row.self {
+		cursor: default;
+		opacity: 0.72;
+	}
+	.person-row:disabled {
+		pointer-events: none;
+	}
+	.person-row :global(svg) {
+		color: var(--color-muted-foreground);
+	}
+	.person-text {
+		flex: 1;
+		min-width: 0;
+	}
+	.unread {
+		min-width: 20px;
+		height: 20px;
+		border-radius: 999px;
+		display: inline-grid;
+		place-items: center;
+		background: var(--color-primary);
+		color: var(--color-primary-foreground);
+		font-size: 11px;
+		font-weight: 700;
+	}
+	.avatar {
 		width: 32px;
 		height: 32px;
 		border-radius: 50%;
@@ -458,7 +814,17 @@
 		place-items: center;
 		font-size: 13px;
 		font-weight: 600;
-		margin-right: 12px;
+		flex-shrink: 0;
+		overflow: hidden;
+	}
+	.avatar.large {
+		width: 38px;
+		height: 38px;
+	}
+	.avatar img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 	.pname {
 		display: block;
@@ -474,6 +840,180 @@
 	.active {
 		color: var(--color-success);
 		font-weight: 600;
+	}
+
+	.chat-dialog {
+		position: fixed;
+		z-index: 71;
+		right: 18px;
+		bottom: 18px;
+		width: min(420px, calc(100vw - 32px));
+		max-height: min(680px, calc(100dvh - 36px));
+		display: grid;
+		grid-template-rows: auto minmax(180px, 1fr) auto auto auto;
+		background: var(--color-card);
+		color: var(--color-foreground);
+		border: 1px solid var(--color-border);
+		border-radius: 16px;
+		box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+		overflow: hidden;
+	}
+	.chat-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 12px 14px;
+		border-bottom: 1px solid var(--color-border);
+	}
+	.chat-title {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		min-width: 0;
+	}
+	.chat-title h2 {
+		margin: 0;
+		font-size: 15px;
+		font-weight: 700;
+	}
+	.chat-title p {
+		margin: 2px 0 0;
+		font-size: 11.5px;
+		color: var(--color-muted-foreground);
+	}
+	.chat-body {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		padding: 12px;
+		overflow-y: auto;
+		background: color-mix(in oklch, var(--color-background) 88%, var(--color-card));
+	}
+	.empty-chat {
+		margin: auto;
+		color: var(--color-muted-foreground);
+		font-size: 13px;
+	}
+	.bubble {
+		width: fit-content;
+		max-width: 86%;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 9px 11px;
+		border-radius: 14px;
+		background: var(--color-card);
+		border: 1px solid var(--color-border);
+		align-self: flex-start;
+	}
+	.bubble.mine {
+		align-self: flex-end;
+		background: color-mix(in oklch, var(--color-primary) 18%, var(--color-card));
+		border-color: color-mix(in oklch, var(--color-primary) 36%, var(--color-border));
+	}
+	.bubble p {
+		margin: 0;
+		font-size: 13px;
+		line-height: 1.35;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+	.bubble time {
+		color: var(--color-muted-foreground);
+		font-size: 10.5px;
+	}
+	.attachment-list,
+	.picked-files {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.attachment,
+	.picked-files button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		background: var(--color-background);
+		color: var(--color-foreground);
+		padding: 6px 8px;
+		font: inherit;
+		font-size: 11.5px;
+		cursor: pointer;
+	}
+	.attachment span,
+	.picked-files button {
+		max-width: 210px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.attachment small {
+		color: var(--color-muted-foreground);
+	}
+	.picked-files {
+		padding: 8px 12px 0;
+		background: var(--color-card);
+	}
+	.chat-error {
+		margin: 8px 12px 0;
+		color: var(--color-danger);
+		font-size: 12px;
+	}
+	.chat-form {
+		display: grid;
+		grid-template-columns: 34px 1fr 38px;
+		gap: 8px;
+		align-items: end;
+		padding: 12px;
+		background: var(--color-card);
+	}
+	.chat-form textarea {
+		min-height: 42px;
+		max-height: 120px;
+		resize: vertical;
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		padding: 10px 12px;
+		background: var(--color-background);
+		color: var(--color-foreground);
+		font: inherit;
+		font-size: 13px;
+	}
+	.attach-btn,
+	.send-btn {
+		width: 34px;
+		height: 34px;
+		display: grid;
+		place-items: center;
+		border: 0;
+		border-radius: 999px;
+		background: var(--color-muted);
+		color: var(--color-foreground);
+		cursor: pointer;
+	}
+	.attach-btn {
+		position: relative;
+		overflow: hidden;
+	}
+	.attach-btn input {
+		position: absolute;
+		inset: 0;
+		opacity: 0;
+		cursor: pointer;
+	}
+	.send-btn {
+		width: 38px;
+		height: 38px;
+		background: var(--color-primary);
+		color: var(--color-primary-foreground);
+	}
+	.send-btn:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	/* Share dialog */

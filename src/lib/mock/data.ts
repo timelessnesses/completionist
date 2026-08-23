@@ -23,6 +23,7 @@ export interface Person {
 	name: string;
 	owner?: boolean;
 	status?: 'Active' | 'Offline';
+	avatar?: string | null;
 }
 
 export type FilterTag = InferSelectModel<typeof task_tag>;

@@ -595,7 +595,7 @@
 			<button class="close" aria-label="Close people panel" onclick={closeAll}>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
-			<PeoplePanel isOwner={data.isOwner} />
+			<PeoplePanel isOwner={data.isOwner} {viewerId} />
 		</div>
 
 		{#if railOpen || peopleOpen}

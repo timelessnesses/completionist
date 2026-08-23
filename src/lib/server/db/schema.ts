@@ -81,7 +81,7 @@ export const task = sqliteTable('task', {
 	all_day: integer('all_day').notNull().$type<0 | 1>(),
 	// higher importance_value means higher importance
 	importance_value: integer('importance_value').notNull(),
-	completed: integer('completed', { mode: 'timestamp_ms' }),
+	completed: integer('completed', { mode: 'timestamp_ms' })
 });
 
 export const user = sqliteTable('user', {
@@ -206,6 +206,39 @@ export const fcm_tokens = sqliteTable('fcm_tokens', {
 		.$defaultFn(() => new Date())
 });
 
+export const direct_message = sqliteTable('direct_message', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	from_user_id: text('from_user_id')
+		.references((): AnySQLiteColumn => user.id)
+		.notNull(),
+	to_user_id: text('to_user_id')
+		.references((): AnySQLiteColumn => user.id)
+		.notNull(),
+	message: text('message'),
+	created_at: integer('created_at', { mode: 'timestamp_ms' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+export const direct_message_attachment = sqliteTable('direct_message_attachment', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	message_id: text('message_id')
+		.references((): AnySQLiteColumn => direct_message.id)
+		.notNull(),
+	file_name: text('file_name').notNull(),
+	file_url: text('file_url').notNull(),
+	file_key: text('file_key').notNull(),
+	content_type: text('content_type'),
+	size: integer('size'),
+	created_at: integer('created_at', { mode: 'timestamp_ms' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
 export const issues = sqliteTable('issues', {
 	id: text('id')
 		.primaryKey()
@@ -321,6 +354,8 @@ export const userRelations = relations(user, ({ many }) => ({
 	identities: many(user_identities),
 	push_subscriptions: many(push_subscriptions),
 	fcm_tokens: many(fcm_tokens),
+	sent_direct_messages: many(direct_message, { relationName: 'direct_message_sender' }),
+	received_direct_messages: many(direct_message, { relationName: 'direct_message_recipient' }),
 	created_issues: many(issues),
 	issue_comments: many(issue_comments),
 	issue_attachments: many(issue_attachments)
@@ -390,6 +425,27 @@ export const fcmTokensRelations = relations(fcm_tokens, ({ one }) => ({
 	user: one(user, {
 		fields: [fcm_tokens.user_id],
 		references: [user.id]
+	})
+}));
+
+export const directMessageRelations = relations(direct_message, ({ one, many }) => ({
+	from_user: one(user, {
+		fields: [direct_message.from_user_id],
+		references: [user.id],
+		relationName: 'direct_message_sender'
+	}),
+	to_user: one(user, {
+		fields: [direct_message.to_user_id],
+		references: [user.id],
+		relationName: 'direct_message_recipient'
+	}),
+	attachments: many(direct_message_attachment)
+}));
+
+export const directMessageAttachmentRelations = relations(direct_message_attachment, ({ one }) => ({
+	message: one(direct_message, {
+		fields: [direct_message_attachment.message_id],
+		references: [direct_message.id]
 	})
 }));
 
