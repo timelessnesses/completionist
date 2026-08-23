@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '$lib/server/db/index.js';
 
 export async function POST({ cookies, platform, locals }) {
-	let db = getDb(platform?.env.COMPLETIONIST_DB as D1Database);
+	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 	await db
 		.update(user)
 		.set({

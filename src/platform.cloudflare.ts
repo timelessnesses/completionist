@@ -1,8 +1,9 @@
 import { getDb } from '$lib/server/db';
-import { user_identities, fcm_tokens } from '$lib/server/db/schema';
-import { isNotNull, eq } from 'drizzle-orm/sqlite-core/expressions';
+import { fcm_tokens, push_subscriptions, user_identities } from '$lib/server/db/schema';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
 import * as web_push from 'web-push';
 import { Resend } from 'resend';
+import type { TaskNotificationEnvelope } from '$lib/server/task-fanout';
 export { GlobalWS } from '$lib/durable_objects/GlobalWS';
 
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -14,21 +15,42 @@ type ServiceAccount = {
 	token_uri: string;
 };
 
+type TransportBody = {
+	subject: string;
+	message: string;
+	html: string;
+	data?: Record<string, string>;
+	recipient_user_ids?: string[];
+};
+
 export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
-	// const db = getDb(env.COMPLETIONIST_DB);
-	// const subscriptions = await db.query.push_subscriptions.findMany();
-	// web_push.setVapidDetails("mailto:mooping@timelessnesses.me", env.VAPID_PUBLIC, env.VAPID_PRIVATE)
 	if (batch.queue === 'completionist-queue') {
 		await Promise.all(
 			batch.messages.map(async (message) => {
-				await env.WS_QUEUE.send(message.body);
-				await env.WEBPUSH_QUEUE.send(message.body);
-				await env.EMAIL_QUEUE.send(message.body);
-				await env.GCM_QUEUE.send(message.body);
+				const body = message.body;
+				if (isTaskNotificationEnvelope(body)) {
+					if (body.deliver.webpush) {
+						await env.WEBPUSH_QUEUE.send(body);
+					}
+					if (body.deliver.email) {
+						await env.EMAIL_QUEUE.send(body);
+					}
+					if (body.deliver.fcm) {
+						await env.GCM_QUEUE.send(body);
+					}
+				} else {
+					await env.WS_QUEUE.send(body);
+					await env.WEBPUSH_QUEUE.send(body);
+					await env.EMAIL_QUEUE.send(body);
+					await env.GCM_QUEUE.send(body);
+				}
 				message.ack();
 			})
 		);
-	} else if (batch.queue === 'webpush-queue') {
+		return;
+	}
+
+	if (batch.queue === 'webpush-queue') {
 		await handleWebpushMessage(batch, env, ctx);
 	} else if (batch.queue === 'email-queue') {
 		await handleEmailMessage(batch, env, ctx);
@@ -39,28 +61,41 @@ export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext
 	}
 }
 
-async function handleWebsocketMessage(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+async function handleWebsocketMessage(batch: MessageBatch, env: Env, _ctx: ExecutionContext) {
 	const stub = env.GlobalWS.getByName('global_ws');
 	for (const message of batch.messages) {
+		const payload = typeof message.body === 'string' ? message.body : JSON.stringify(message.body ?? null);
 		await stub.fetch('https://global-ws.internal/broadcast', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(message.body)
+			body: payload
 		});
 		message.ack();
 	}
 }
 
-async function handleWebpushMessage(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+async function handleWebpushMessage(batch: MessageBatch, env: Env, _ctx: ExecutionContext) {
 	const db = getDb(env.COMPLETIONIST_DB);
-	const allSubscriptions = await db.query.push_subscriptions.findMany();
 	web_push.setVapidDetails(
 		'mailto:mooping@timelessnesses.me',
 		env.PUBLIC_VAPID_PUBLIC,
 		env.VAPID_PRIVATE
 	);
+
 	for (const message of batch.messages) {
-		for (const subscription of allSubscriptions) {
+		const body = normalizeTransportBody(message.body);
+		const recipientIds = body.recipient_user_ids ?? [];
+		if (recipientIds.length === 0) {
+			message.ack();
+			continue;
+		}
+
+		const subscriptions = await db
+			.select()
+			.from(push_subscriptions)
+			.where(inArray(push_subscriptions.user_id, recipientIds));
+
+		for (const subscription of subscriptions) {
 			await web_push.sendNotification(
 				{
 					endpoint: subscription.endpoint,
@@ -69,49 +104,72 @@ async function handleWebpushMessage(batch: MessageBatch, env: Env, ctx: Executio
 						auth: subscription.auth
 					}
 				},
-				JSON.stringify(message.body)
+				JSON.stringify({
+					title: body.subject,
+					body: body.message,
+					data: body.data
+				})
 			);
 		}
+
 		message.ack();
 	}
 }
 
-async function handleEmailMessage(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+async function handleEmailMessage(batch: MessageBatch, env: Env, _ctx: ExecutionContext) {
 	const db = getDb(env.COMPLETIONIST_DB);
-	const user_identities_email = await db.query.user_identities.findMany({
-		where: {
-			email: isNotNull(user_identities.email)
-		}
-	});
 	const resend = new Resend(env.RESEND_API_KEY);
-	let emails = [];
+	const emails: Array<{ from: string; to: string; subject: string; html: string }> = [];
+
 	for (const message of batch.messages) {
-		emails.push({
-			from: 'completionist@timelessnesses.me',
-			to: user_identities_email[0].email as string,
-			subject: (message.body as { subject: string }).subject,
-			html: `<p>${(message.body as { message: string }).message}</p>`
-		});
+		const body = normalizeTransportBody(message.body);
+		const recipientIds = body.recipient_user_ids ?? [];
+		if (recipientIds.length === 0) {
+			message.ack();
+			continue;
+		}
+
+		const identities = await db
+			.select({
+				email: user_identities.email
+			})
+			.from(user_identities)
+			.where(and(inArray(user_identities.user_id, recipientIds), isNotNull(user_identities.email)));
+
+		for (const identity of identities) {
+			if (!identity.email) continue;
+			emails.push({
+				from: 'completionist@timelessnesses.me',
+				to: identity.email,
+				subject: body.subject,
+				html: body.html
+			});
+		}
+
+		message.ack();
 	}
-	await resend.batch.send(emails);
+
+	if (emails.length > 0) {
+		await resend.batch.send(emails);
+	}
 }
 
 async function handleGcmMessage(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
 	const db = getDb(env.COMPLETIONIST_DB);
-	const tokens = await db.select().from(fcm_tokens);
-	if (tokens.length === 0 || batch.messages.length === 0) return;
+	if (batch.messages.length === 0) return;
 
 	const accessToken = await getFcmAccessToken(env);
 	const url = `https://fcm.googleapis.com/v1/projects/${env.FCM_PROJECT_ID}/messages:send`;
 
 	for (const message of batch.messages) {
-		const body = message.body as {
-			subject?: string;
-			message?: string;
-			data?: Record<string, string>;
-		};
-		const title = body.subject ?? 'Completionist';
-		const text = body.message ?? '';
+		const body = normalizeTransportBody(message.body);
+		const recipientIds = body.recipient_user_ids ?? [];
+		if (recipientIds.length === 0) {
+			message.ack();
+			continue;
+		}
+
+		const tokens = await db.select().from(fcm_tokens).where(inArray(fcm_tokens.user_id, recipientIds));
 
 		for (const { token } of tokens) {
 			const res = await fetch(url, {
@@ -123,25 +181,94 @@ async function handleGcmMessage(batch: MessageBatch, env: Env, ctx: ExecutionCon
 				body: JSON.stringify({
 					message: {
 						token,
-						notification: { title, body: text },
+						notification: { title: body.subject, body: body.message },
 						data: body.data,
 						android: { priority: 'HIGH' }
 					}
 				})
 			});
 
-			// Clean up tokens that are no longer valid so we stop sending to them.
 			if (res.status === 404 || res.status === 410) {
 				ctx.waitUntil(db.delete(fcm_tokens).where(eq(fcm_tokens.token, token)));
 			} else if (!res.ok) {
 				console.error(`FCM send failed (${res.status}): ${await res.text()}`);
 			}
 		}
+
 		message.ack();
 	}
 }
 
-// ── Firebase service-account auth ────────────────────────────────────────
+function normalizeTransportBody(body: unknown): TransportBody {
+	if (isTaskNotificationEnvelope(body)) {
+		return {
+			subject: body.subject,
+			message: body.message,
+			html: body.html,
+			data: body.data,
+			recipient_user_ids: body.recipient_user_ids
+		};
+	}
+
+	if (typeof body === 'string') {
+		return {
+			subject: 'Completionist',
+			message: body,
+			html: `<p>${escapeHtml(body)}</p>`
+		};
+	}
+
+	if (body && typeof body === 'object') {
+		const record = body as Record<string, unknown>;
+		return {
+			subject: typeof record.subject === 'string' ? record.subject : 'Completionist',
+			message: typeof record.message === 'string' ? record.message : JSON.stringify(body),
+			html:
+				typeof record.html === 'string'
+					? record.html
+					: `<pre>${escapeHtml(JSON.stringify(body, null, 2))}</pre>`,
+			data: isRecord(record.data) ? (record.data as Record<string, string>) : undefined,
+			recipient_user_ids: Array.isArray(record.recipient_user_ids)
+				? record.recipient_user_ids.filter((id): id is string => typeof id === 'string')
+				: undefined
+		};
+	}
+
+	return {
+		subject: 'Completionist',
+		message: '',
+		html: '<p></p>'
+	};
+}
+
+function isTaskNotificationEnvelope(body: unknown): body is TaskNotificationEnvelope {
+	return !!body && typeof body === 'object' && (body as { type?: string }).type === 'task_notification';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function escapeHtml(value: string): string {
+	return value.replace(/[&<>"']/g, (character) => {
+		switch (character) {
+			case '&':
+				return '&amp;';
+			case '<':
+				return '&lt;';
+			case '>':
+				return '&gt;';
+			case '"':
+				return '&quot;';
+			case "'":
+				return '&#39;';
+			default:
+				return character;
+		}
+	});
+}
+
+// Firebase service-account auth
 
 async function getFcmAccessToken(env: Env): Promise<string> {
 	const serviceAccount: ServiceAccount = JSON.parse(env.FCM_SERVICE_ACCOUNT);

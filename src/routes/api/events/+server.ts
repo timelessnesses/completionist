@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
 import type { WebSocketMessage } from '$lib/websocketMessageTypes';
 import type { Color } from '$lib/server/db/schema.js';
+import { buildTaskNotificationEnvelope } from '$lib/server/task-fanout';
 
 type CreateBody = {
 	task_name: string;
@@ -139,6 +140,9 @@ export const POST = async ({ request, platform, locals }) => {
 	await (platform?.env as Env).WS_QUEUE.send(
 		JSON.stringify({ type: 'shouldRefetch' } as WebSocketMessage)
 	);
+	await (platform?.env as Env).COMPLETIONIST_QUEUE.send(
+		buildTaskNotificationEnvelope(createdWithRelationsFirst, 'created', locals.user?.name)
+	);
 
 	return json(createdWithRelationsFirst, { status: 201 });
 };
@@ -265,6 +269,10 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	} catch {
 		/* best effort */
 	}
+
+	await (platform?.env as Env).COMPLETIONIST_QUEUE.send(
+		buildTaskNotificationEnvelope(updated, 'updated', locals.user?.name)
+	);
 
 	return json(updated, { status: 200 });
 };

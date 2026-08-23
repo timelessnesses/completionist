@@ -2,6 +2,7 @@ import { getDb } from '$lib/server/db/index.js';
 import { task, task_comment } from '$lib/server/db/schema.js';
 import { eq } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
+import { buildTaskNotificationEnvelope } from '$lib/server/task-fanout';
 
 type CreateCommentBody = {
 	task_id: string;
@@ -95,6 +96,10 @@ export const POST = async ({ request, platform, locals }) => {
 	} catch {
 		/* best effort */
 	}
+
+	await (platform?.env as Env).COMPLETIONIST_QUEUE.send(
+		buildTaskNotificationEnvelope(updated, 'commented', user.name)
+	);
 
 	return json(updated, { status: 201 });
 };

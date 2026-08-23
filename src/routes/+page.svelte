@@ -24,8 +24,10 @@
 	import { getWS } from '$lib/websocket.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Capacitor } from '@capacitor/core';
+	import { LocalNotifications } from '@capacitor/local-notifications';
 	import { PushNotifications } from '@capacitor/push-notifications';
 	import { env } from '$env/dynamic/public';
+	import { buildTaskReminderNotifications } from '$lib/task-reminders';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
@@ -59,6 +61,8 @@
 		dependencyIds: [],
 		tagDrafts: []
 	});
+	let reminderSyncInFlight = false;
+	let reminderPermissionReady = false;
 
 	function closeAll() {
 		railOpen = false;
@@ -115,6 +119,17 @@
 		events = events.filter((x) => x.id !== id);
 		if (selectedTaskId === id) selectedTaskId = null;
 	}
+
+	$effect(() => {
+		if (!Capacitor.isNativePlatform()) return;
+		const reminderTasks = events.map((task) => ({
+			id: task.id,
+			task_name: task.task_name,
+			end_at: task.end_at,
+			completed: task.completed
+		}));
+		void syncLocalReminders(reminderTasks);
+	});
 
 	type TaskActivityItem =
 		| {
@@ -202,6 +217,49 @@
 		if (!viewerId) return false;
 		if (task.owner === viewerId) return true;
 		return (task.assignees ?? []).some((assignee) => assignee.user_id === viewerId);
+	}
+
+	async function syncLocalReminders(
+		reminderTasks: Array<{
+			id: string;
+			task_name: string;
+			end_at: Date | number | string;
+			completed?: Date | number | string | null;
+		}>
+	) {
+		if (!Capacitor.isNativePlatform() || reminderSyncInFlight) return;
+		reminderSyncInFlight = true;
+		try {
+			if (!reminderPermissionReady) {
+				const permission = await LocalNotifications.checkPermissions();
+				if (permission.display !== 'granted') {
+					const requested = await LocalNotifications.requestPermissions();
+					if (requested.display !== 'granted') return;
+				}
+				reminderPermissionReady = true;
+			}
+
+			const pending = await LocalNotifications.getPending();
+			const existing = pending.notifications.filter((notification) => {
+				const extra = notification.extra as { scope?: string } | undefined;
+				return extra?.scope === 'task-reminder';
+			});
+			if (existing.length > 0) {
+				await LocalNotifications.cancel({
+					notifications: existing.map((notification) => ({ id: notification.id }))
+				});
+			}
+
+			const reminders = buildTaskReminderNotifications(
+				reminderTasks
+			);
+
+			if (reminders.length > 0) {
+				await LocalNotifications.schedule({ notifications: reminders });
+			}
+		} finally {
+			reminderSyncInFlight = false;
+		}
 	}
 
 	function syncTaskDraft(task: RichTask | null) {
