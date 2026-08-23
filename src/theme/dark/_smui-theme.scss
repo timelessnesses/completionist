@@ -14,7 +14,6 @@
 @use '@smui/top-app-bar/style' as top-app-bar;
 @use '@smui/circular-progress/style' as circular-progress;
 
-
 // Material colors for the calendar app (Dark).
 @use '@smui/common/theme/index' as theme with (
 	$primary: #7eb2fd,

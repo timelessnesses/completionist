@@ -54,7 +54,11 @@ async function handleWebsocketMessage(batch: MessageBatch, env: Env, ctx: Execut
 async function handleWebpushMessage(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
 	const db = getDb(env.COMPLETIONIST_DB);
 	const allSubscriptions = await db.query.push_subscriptions.findMany();
-	web_push.setVapidDetails('mailto:mooping@timelessnesses.me', env.VAPID_PUBLIC, env.VAPID_PRIVATE);
+	web_push.setVapidDetails(
+		'mailto:mooping@timelessnesses.me',
+		env.PUBLIC_VAPID_PUBLIC,
+		env.VAPID_PRIVATE
+	);
 	for (const message of batch.messages) {
 		for (const subscription of allSubscriptions) {
 			await web_push.sendNotification(

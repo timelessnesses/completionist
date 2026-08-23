@@ -102,7 +102,13 @@
 				"binding": "GCM_QUEUE"
 			}
 		]
-	}
+	},
+	"r2_buckets": [
+		{
+			"binding": "COMPLETIONIST_R2",
+			"bucket_name": "completionist-storage"
+		}
+	]
 
 	/**
 	 * Smart Placement

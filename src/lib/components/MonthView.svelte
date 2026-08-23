@@ -208,7 +208,7 @@
 		</div>
 	{/if}
 
-		<!-- Upcoming list removed -->
+	<!-- Upcoming list removed -->
 
 	<EventDetailsDialog
 		bind:open={detailsOpen}

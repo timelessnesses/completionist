@@ -79,7 +79,7 @@
 			} catch {
 				return;
 			}
-			if (msg.type === "shouldRefetch") {
+			if (msg.type === 'shouldRefetch') {
 				invalidateAll();
 			}
 		});
@@ -319,8 +319,6 @@
 		flex-direction: column;
 	}
 
-
-
 	.pane-title {
 		margin: 0 0 8px;
 		font-size: 12px;
@@ -363,19 +361,19 @@
 		color: #9aa0a6;
 	}
 	.daynum {
-	font-size: 12px;
-	line-height: 22px; /* match height directly instead of relying on place-items */
-	color: #1f1f1f;
-	height: 22px;
-	width: 22px;
-	flex-shrink: 0;
-	box-sizing: border-box;
-	display: inline-flex; /* flex box in both dimensions is more reliably constrained than inline-grid */
-	align-items: center;
-	justify-content: center;
-	border-radius: 50%;
-	aspect-ratio: 1 / 1; /* belt-and-suspenders: forces a true circle regardless of width/height conflicts */
-}
+		font-size: 12px;
+		line-height: 22px; /* match height directly instead of relying on place-items */
+		color: #1f1f1f;
+		height: 22px;
+		width: 22px;
+		flex-shrink: 0;
+		box-sizing: border-box;
+		display: inline-flex; /* flex box in both dimensions is more reliably constrained than inline-grid */
+		align-items: center;
+		justify-content: center;
+		border-radius: 50%;
+		aspect-ratio: 1 / 1; /* belt-and-suspenders: forces a true circle regardless of width/height conflicts */
+	}
 	.daynum.today {
 		background: #0b57d0;
 		color: #fff;

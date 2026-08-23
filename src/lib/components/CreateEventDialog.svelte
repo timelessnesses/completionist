@@ -2,14 +2,16 @@
 	import { mdiClose } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import { getWS } from '$lib/websocket.svelte';
-	import type { CalendarEvent } from '$lib/mock/data';
+	import type { FilterTag, RichTask } from '$lib/mock/data';
 
 	let {
 		open = $bindable(false),
-		onevent
+		onevent,
+		tags = []
 	}: {
 		open?: boolean;
-		onevent?: (ev: CalendarEvent) => void;
+		onevent?: (ev: RichTask) => void;
+		tags?: FilterTag[];
 	} = $props();
 
 	let title = $state('');
@@ -22,8 +24,19 @@
 	let color = $state('#0b57d0');
 	let busy = $state(false);
 	let errorMsg = $state('');
+	let tagInput = $state('');
+	let selectedTags = $state<Array<{ id?: string; tag: string; color?: { r: number; g: number; b: number } }>>(
+		[]
+	);
 
 	const presetColors = ['#0b57d0', '#188038', '#b0600a', '#a50e0e', '#7c3aed', '#0b8043'];
+	const tagSuggestions = $derived.by(() => {
+		const query = tagInput.trim().toLowerCase();
+		return tags
+			.filter((tag) => !selectedTags.some((picked) => picked.id === tag.id))
+			.filter((tag) => !query || tag.tag.toLowerCase().includes(query))
+			.slice(0, 8);
+	});
 
 	function todayStr(): string {
 		const d = new Date();
@@ -33,6 +46,8 @@
 	function close() {
 		open = false;
 		errorMsg = '';
+		tagInput = '';
+		selectedTags = [];
 	}
 
 	function hexToRgb(hex: string): { r: number; g: number; b: number } {
@@ -42,6 +57,31 @@
 			g: parseInt(m![2], 16),
 			b: parseInt(m![3], 16)
 		};
+	}
+
+	function rgbToHex(c: { r: number; g: number; b: number }): string {
+		return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+	}
+
+	function addTag(tag: FilterTag) {
+		if (selectedTags.some((picked) => picked.id === tag.id || picked.tag === tag.tag)) return;
+		selectedTags = [...selectedTags, { id: tag.id, tag: tag.tag, color: tag.color }];
+		tagInput = '';
+	}
+
+	function createTagFromInput() {
+		const trimmed = tagInput.trim();
+		if (!trimmed) return;
+		if (selectedTags.some((picked) => picked.tag.toLowerCase() === trimmed.toLowerCase())) {
+			tagInput = '';
+			return;
+		}
+		selectedTags = [...selectedTags, { tag: trimmed, color: hexToRgb(color) }];
+		tagInput = '';
+	}
+
+	function removeTagAt(index: number) {
+		selectedTags = selectedTags.filter((_, i) => i !== index);
 	}
 
 	async function submit() {
@@ -74,14 +114,19 @@
 					end_at: end.getTime(),
 					all_day: allDay ? 1 : 0,
 					status: 'todo',
-					importance_value: 0
+					importance_value: 0,
+					tags: selectedTags.map((tag) => ({
+						id: tag.id,
+						tag: tag.tag,
+						color: tag.color
+					}))
 				})
 			});
 			if (!res.ok) {
 				const t = await res.text().catch(() => '');
 				throw new Error(t || `Request failed (${res.status})`);
 			}
-			const created: CalendarEvent = await res.json();
+			const created: RichTask = await res.json();
 
 			// Notify other clients over the global websocket (best effort).
 			try {
@@ -174,17 +219,61 @@
 
 			<div class="field">
 				<span class="lbl">Color</span>
-				<div class="swatches">
-					{#each presetColors as c}
-						<button
-							type="button"
-							class="swatch"
-							class:selected={color === c}
-							style:background={c}
-							aria-label={`color ${c}`}
-							onclick={() => (color = c)}
-						></button>
-					{/each}
+				<div class="color-row">
+					<input class="picker" type="color" bind:value={color} aria-label="Custom color" />
+					<div class="swatches">
+						{#each presetColors as c}
+							<button
+								type="button"
+								class="swatch"
+								class:selected={color === c}
+								style:background={c}
+								aria-label={`color ${c}`}
+								onclick={() => (color = c)}
+							></button>
+						{/each}
+					</div>
+				</div>
+			</div>
+
+			<div class="field">
+				<span class="lbl">Tags</span>
+				<div class="tag-row">
+					<div class="tag-input-wrap">
+						<input
+							class="tag-input"
+							type="text"
+							bind:value={tagInput}
+							placeholder="Add a tag"
+							onkeydown={(e) => {
+								if (e.key === 'Enter') {
+									e.preventDefault();
+									createTagFromInput();
+								}
+							}}
+						/>
+						{#if tagInput.trim()}
+							<button type="button" class="mini" onclick={createTagFromInput}>Create</button>
+						{/if}
+					</div>
+					<div class="selected-tags">
+						{#each selectedTags as tag, index (tag.id ?? `${tag.tag}-${index}`)}
+							<button type="button" class="tag-chip" onclick={() => removeTagAt(index)}>
+								<span class="tag-dot" style:background={tag.color ? rgbToHex(tag.color) : color}></span>
+								{tag.tag}
+							</button>
+						{/each}
+					</div>
+					{#if tagSuggestions.length}
+						<div class="suggestions">
+							{#each tagSuggestions as tag (tag.id)}
+								<button type="button" class="suggestion" onclick={() => addTag(tag)}>
+									<span class="tag-dot" style:background={rgbToHex(tag.color)}></span>
+									{tag.tag}
+								</button>
+							{/each}
+						</div>
+					{/if}
 				</div>
 			</div>
 
@@ -319,6 +408,69 @@
 	.swatches {
 		display: flex;
 		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.color-row {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.picker {
+		width: 52px;
+		height: 36px;
+		border: 1px solid #c4c7c5;
+		border-radius: 10px;
+		background: transparent;
+		padding: 3px;
+	}
+	.tag-row {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.tag-input-wrap {
+		display: flex;
+		gap: 8px;
+	}
+	.tag-input {
+		flex: 1;
+		border: 1px solid #c4c7c5;
+		border-radius: 8px;
+		padding: 9px 12px;
+		background: var(--color-background);
+		color: var(--color-foreground);
+	}
+	.mini {
+		border: 0;
+		border-radius: 999px;
+		background: #e8f0fe;
+		color: #0b57d0;
+		padding: 0 12px;
+		font-size: 12px;
+	}
+	.selected-tags,
+	.suggestions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.tag-chip,
+	.suggestion {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		border: 1px solid #c4c7c5;
+		border-radius: 999px;
+		padding: 8px 12px;
+		background: var(--color-background);
+		color: var(--color-foreground);
+		font-size: 12px;
+	}
+	.tag-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 999px;
+		flex-shrink: 0;
 	}
 	.swatch {
 		width: 28px;

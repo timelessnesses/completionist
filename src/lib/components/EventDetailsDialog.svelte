@@ -25,6 +25,7 @@
 	let endTime = $state('10:00');
 	let allDay = $state(false);
 	let color = $state('#0b57d0');
+	let completed = $state(false);
 	let busy = $state(false);
 	let errorMsg = $state('');
 
@@ -42,6 +43,7 @@
 		endTime = toTimeInput(end);
 		allDay = !!event.all_day;
 		color = rgbToHex(event.color);
+		completed = !!event.completed;
 		errorMsg = '';
 	});
 
@@ -100,7 +102,8 @@
 					color: hexToRgb(color),
 					start_at: start.getTime(),
 					end_at: end.getTime(),
-					all_day: allDay ? 1 : 0
+					all_day: allDay ? 1 : 0,
+					completed: completed ? Date.now() : null
 				})
 			});
 			if (!res.ok) {
@@ -174,6 +177,11 @@
 					<span>All day</span>
 				</label>
 
+				<label class="row">
+					<input type="checkbox" bind:checked={completed} />
+					<span>Completed</span>
+				</label>
+
 				<div class="grid2">
 					<label class="field">
 						<span class="lbl">Start date</span>
@@ -207,17 +215,20 @@
 
 				<div class="field">
 					<span class="lbl">Color</span>
-					<div class="swatches">
-						{#each presetColors as c}
-							<button
-								type="button"
-								class="swatch"
-								class:selected={color === c}
-								style:background={c}
-								aria-label={`color ${c}`}
-								onclick={() => (color = c)}
-							></button>
-						{/each}
+					<div class="color-row">
+						<input class="picker" type="color" bind:value={color} aria-label="Custom color" />
+						<div class="swatches">
+							{#each presetColors as c}
+								<button
+									type="button"
+									class="swatch"
+									class:selected={color === c}
+									style:background={c}
+									aria-label={`color ${c}`}
+									onclick={() => (color = c)}
+								></button>
+							{/each}
+						</div>
 					</div>
 				</div>
 
@@ -352,6 +363,20 @@
 	.swatches {
 		display: flex;
 		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.color-row {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.picker {
+		width: 52px;
+		height: 36px;
+		border: 1px solid #c4c7c5;
+		border-radius: 10px;
+		background: transparent;
+		padding: 3px;
 	}
 	.swatch {
 		width: 28px;

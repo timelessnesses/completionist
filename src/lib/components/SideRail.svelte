@@ -69,8 +69,8 @@
 		font-weight: 600;
 		color: var(--color-foreground);
 	}
-		.brand :global(.ws-chip) {
-			background: var(--color-muted);
+	.brand :global(.ws-chip) {
+		background: var(--color-muted);
 		height: 24px;
 		border-radius: 8px;
 		font-size: 12px;
@@ -79,12 +79,12 @@
 	.create {
 		padding: 0 16px;
 	}
-		.create :global(.create-btn) {
-			width: 100%;
-			border-radius: 12px;
-			height: 44px;
-			background: var(--color-primary);
-			color: var(--color-primary-foreground);
+	.create :global(.create-btn) {
+		width: 100%;
+		border-radius: 12px;
+		height: 44px;
+		background: var(--color-primary);
+		color: var(--color-primary-foreground);
 		display: flex;
 		align-items: center;
 		gap: 8px;

@@ -40,6 +40,7 @@
 	const eventsByDay = $derived.by(() => {
 		const map = new Map<string, CalendarEvent[]>();
 		for (const ev of events) {
+			if (ev.completed) continue;
 			const start = new Date(ev.start_at);
 			const end = new Date(ev.end_at);
 			const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -80,6 +81,7 @@
 	/** Timed events with a vertical position (as a % of the 24-hour column). */
 	function timedEvents(key: string) {
 		return (eventsByDay.get(key) ?? []).flatMap((ev) => {
+			if (ev.completed) return [];
 			if (ev.all_day) return [];
 			const d = new Date(ev.start_at);
 			const startMinutes =
@@ -93,7 +95,7 @@
 
 	/** All-day events, rendered in the all-day strip like Google Calendar. */
 	function allDayEvents(key: string) {
-		return (eventsByDay.get(key) ?? []).filter((ev) => !!ev.all_day);
+		return (eventsByDay.get(key) ?? []).filter((ev) => !!ev.all_day && !ev.completed);
 	}
 
 	function timeLabel(ev: CalendarEvent): string {
@@ -154,7 +156,8 @@
 	function scrollToLine(behavior: ScrollBehavior = 'auto') {
 		if (!followEnabled || userInterrupted || !rootEl || !scroller) return;
 		// Position the now-line ~40% from the top of the visible area.
-		const target = rootEl.offsetTop - scroller.offsetTop + nowLineTopPx - scroller.clientHeight * 0.4;
+		const target =
+			rootEl.offsetTop - scroller.offsetTop + nowLineTopPx - scroller.clientHeight * 0.4;
 		const clamped = Math.max(0, Math.min(target, scroller.scrollHeight - scroller.clientHeight));
 		suppressScrollEvent = true;
 		scroller.scrollTo({ top: clamped, behavior });

@@ -8,10 +8,45 @@ export const load = async ({ params, request, platform, locals }) => {
 		where: and(
 			gte(task.start_at, getMonthFromDate(new Date(), -1)),
 			lt(task.start_at, getMonthFromDate(new Date(), 2))
-		)
+		),
+		with: {
+			parentTask: true,
+			subtasks: true,
+			assignees: {
+				with: {
+					user: true
+				}
+			},
+			dependencies: {
+				with: {
+					dependency: true
+				}
+			},
+			dependents: {
+				with: {
+					task: true
+				}
+			},
+			comments: {
+				with: {
+					user: true
+				}
+			},
+			attachments: {
+				with: {
+					user: true
+				}
+			},
+			tags: {
+				with: {
+					tag: true
+				}
+			}
+		}
 	});
 
 	const filters = await db.query.task_tag.findMany();
+	const users = await db.query.user.findMany();
 
 	/* // Detect ownership: the user is an owner if they own any task or are an admin.
     let isOwner = locals.user?.admin ?? false;
@@ -30,6 +65,7 @@ export const load = async ({ params, request, platform, locals }) => {
 		event: tasks,
 		upcoming: tasks.filter((t) => t.start_at > new Date()),
 		filters,
+		users,
 		isOwner: isAdmin,
 		isAdmin,
 		viewerId
