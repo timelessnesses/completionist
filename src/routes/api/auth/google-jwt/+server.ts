@@ -66,8 +66,8 @@ export async function POST({ request, cookies, platform }) {
 		const user_t = await db.query.user.findFirst({
 			where: eq(user.name, payload.name as string)
 		});
-		if (!user_t) {
-			throw error(500, 'Admin user not found.');
+		if (!user_t) { 
+			throw error(400, `Failed to create user account for ${payload.email}.`);
 		}
 		await db
 			.insert(user_identities)
