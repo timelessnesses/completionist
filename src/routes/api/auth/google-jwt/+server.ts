@@ -46,49 +46,39 @@ export async function POST({ request, cookies, platform }) {
 	if (!payload.email_verified) {
 		return new Response(JSON.stringify({ error: 'Email not verified' }), { status: 400 });
 	}
-
-	// Look up the identity for this Google account. A user may have multiple
-	// identities (emails/providers); the email lives on user_identities, not user.
-	const identity = await db.query.user_identities.findFirst({
-		where: and(eq(user_identities.provider, 'google'), eq(user_identities.email, payload.email))
+	let resolvedUser = await db.query.user.findFirst({
+		where: and(
+			eq(user_identities.provider, 'google'),
+			eq(user_identities.provider_user_id, payload.email)
+		),
 	});
-
-	if (!identity && envPrivate.ADMIN_EMAIL !== payload.email) {
-		return new Response(JSON.stringify({ error: 'Student ID not whitelisted' }), { status: 400 });
-	}
-
-	let resolvedUser;
-	if (identity) {
-		resolvedUser = await db.query.user.findFirst({ where: eq(user.id, identity.user_id) });
-	} else {
-		if (envPrivate.ADMIN_EMAIL === payload.email) {
-			await db
-				.insert(user)
-				.values({
-					name: payload.name || 'Admin',
-					logged_in_when: new Date(),
-					jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
-					refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS),
-					owner: 1
-				})
-				.run();
-			const admin_user = await db.query.user.findFirst({
-				where: eq(user.name, payload.name || 'Admin')
-			});
-			if (!admin_user) {
-				throw error(500, 'Admin user not found.');
-			}
-			await db
-				.insert(user_identities)
-				.values({
-					user_id: admin_user.id,
-					provider: 'google',
-					provider_user_id: payload.email,
-					email: payload.email
-				})
-				.run();
-			resolvedUser = admin_user;
+	if (!resolvedUser) {
+		await db
+			.insert(user)
+			.values({
+				name: payload.name as string,
+				logged_in_when: new Date(),
+				jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
+				refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS),
+				owner: 1
+			})
+			.run();
+		const user_t = await db.query.user.findFirst({
+			where: eq(user.name, payload.name as string)
+		});
+		if (!user_t) {
+			throw error(500, 'Admin user not found.');
 		}
+		await db
+			.insert(user_identities)
+			.values({
+				user_id: user_t.id,
+				provider: 'google',
+				provider_user_id: payload.email,
+				email: payload.email
+			})
+			.run();
+		resolvedUser = user_t;
 	}
 
 	if (!resolvedUser) {
