@@ -506,8 +506,8 @@
 				console.log('requesting notification permission for native platform...');
 				await requestForNotificationPermission();
 			} else {
-				console.log('registering service worker for web platform...');
-				await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
+				/* console.log('registering service worker for web platform...');
+				await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC); */
 			}
 		})();
 
