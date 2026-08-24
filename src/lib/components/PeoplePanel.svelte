@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button, { Label } from '@smui/button';
+	import { env } from '$env/dynamic/public';
 	import {
 		mdiShareVariantOutline,
 		mdiCogOutline,
@@ -20,8 +21,9 @@
 	import type { Person } from '$lib/mock/data';
 	import { getWS } from '$lib/websocket.svelte';
 	import { onMount } from 'svelte';
-	import { Capacitor } from '@capacitor/core';
+	import { Capacitor, registerPlugin } from '@capacitor/core';
 	import { LocalNotifications } from '@capacitor/local-notifications';
+	import { registerServiceWorker, requestForNotificationPermission, unregisterPushNotifications, unregisterServiceWorker } from '$lib/notificationStuff';
 
 	let { isOwner = false, viewerId = null }: { isOwner?: boolean; viewerId?: string | null } =
 		$props();
@@ -600,7 +602,26 @@
 				</a>
 			{/if}
 
-			<button class="setting-action" onclick={() => (window.location.href = '/admin/')}>
+			<button class="setting-action" onclick={async () => {
+				if (await notificationPermission()) {
+					if (isNativePlatform()) {
+						await LocalNotifications.cancelAll();
+						notificationEnabled = false;
+						await unregisterPushNotifications();
+					} else {
+						const sw = await navigator.serviceWorker.ready;
+						await unregisterServiceWorker();
+					}
+				} else {
+					if (isNativePlatform()) {
+						await requestForNotificationPermission();
+						notificationEnabled = await notificationPermission();
+					} else {
+						await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
+						notificationEnabled = await notificationPermission();
+					}
+				}
+			}}>
 				<span class="setting-ic"><MdiIcon path={mdiMessageTextOutline} size={20} /></span>
 				<span class="setting-text">
 					<span class="setting-title"
