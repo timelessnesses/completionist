@@ -1,6 +1,18 @@
 @use 'sass:color';
 
-// @use '@smui/common/theme/color-palette';
+@use '@smui/common/theme/color-palette';
+
+// Material colors for the calendar app (Dark).
+// IMPORTANT: this must come before typography/index and any component
+// style imports below — they transitively @use @smui/common/theme
+// unconfigured, which then blocks this configured "with" load.
+@use '@smui/common/theme/index' as theme with (
+	$primary: #7eb2fd,
+	$secondary: color.scale(#64748b, $whiteness: -20%),
+	$surface: #1f2937,
+	$background: #111827,
+	$error: color-palette.$red-400
+);
 
 @use '@smui/common/typography/index' as typography;
 
@@ -13,15 +25,6 @@
 @use '@smui/paper/style' as paper;
 @use '@smui/top-app-bar/style' as top-app-bar;
 @use '@smui/circular-progress/style' as circular-progress;
-
-// Material colors for the calendar app (Dark).
-@use '@smui/common/theme/index' as theme with (
-	$primary: #7eb2fd,
-	$secondary: color.scale(#64748b, $whiteness: -20%),
-	$surface: #1f2937,
-	$background: #111827,
-	$error: color-palette.$red-400
-);
 
 html,
 body {
