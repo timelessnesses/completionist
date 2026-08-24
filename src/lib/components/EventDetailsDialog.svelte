@@ -1,5 +1,11 @@
 <script lang="ts">
-	import { mdiClose, mdiDeleteOutline, mdiAccountMultipleOutline, mdiLinkVariant, mdiPaperclip } from '@mdi/js';
+	import {
+		mdiClose,
+		mdiDeleteOutline,
+		mdiAccountMultipleOutline,
+		mdiLinkVariant,
+		mdiPaperclip
+	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import type { RichTask, UserSummary } from '$lib/mock/data';
 
@@ -346,8 +352,8 @@
 							onkeydown={(e) => {
 								if (e.key === 'Enter') {
 									e.preventDefault();
-									const exact = users.find((user) =>
-										user.name.toLowerCase() === assigneeQuery.trim().toLowerCase()
+									const exact = users.find(
+										(user) => user.name.toLowerCase() === assigneeQuery.trim().toLowerCase()
 									);
 									if (exact) addAssignee(exact);
 								}
@@ -384,8 +390,8 @@
 							onkeydown={(e) => {
 								if (e.key === 'Enter') {
 									e.preventDefault();
-									const exact = tasks.find((task) =>
-										task.task_name.toLowerCase() === dependencyQuery.trim().toLowerCase()
+									const exact = tasks.find(
+										(task) => task.task_name.toLowerCase() === dependencyQuery.trim().toLowerCase()
 									);
 									if (exact) addDependency(exact);
 								}
@@ -405,7 +411,9 @@
 				<details class="thread" open>
 					<summary>
 						<span class="lbl">Activity thread</span>
-						<span class="thread-count">{(event.comments ?? []).length + (event.attachments ?? []).length}</span>
+						<span class="thread-count"
+							>{(event.comments ?? []).length + (event.attachments ?? []).length}</span
+						>
 					</summary>
 					<div class="thread-body">
 						{#if mergedActivity(event).length}
@@ -421,7 +429,8 @@
 										{:else}
 											<p class="attachment-row">
 												<MdiIcon path={mdiPaperclip} size={14} />
-												<a href={item.file_url} target="_blank" rel="noreferrer">{item.file_name}</a>
+												<a href={item.file_url} target="_blank" rel="noreferrer">{item.file_name}</a
+												>
 											</p>
 										{/if}
 									</div>
@@ -439,7 +448,8 @@
 
 				<footer class="foot">
 					<button type="button" class="btn danger" onclick={removeEvent} disabled={busy}>
-						<MdiIcon path={mdiDeleteOutline} size={16} /> {busy ? 'Deleting...' : 'Delete'}
+						<MdiIcon path={mdiDeleteOutline} size={16} />
+						{busy ? 'Deleting...' : 'Delete'}
 					</button>
 					<div class="spacer"></div>
 					<button type="button" class="btn ghost" onclick={close}>Cancel</button>
@@ -466,7 +476,9 @@
 				<details class="thread" open>
 					<summary>
 						<span class="lbl">Activity thread</span>
-						<span class="thread-count">{(event.comments ?? []).length + (event.attachments ?? []).length}</span>
+						<span class="thread-count"
+							>{(event.comments ?? []).length + (event.attachments ?? []).length}</span
+						>
 					</summary>
 					<div class="thread-body">
 						{#if mergedActivity(event).length}
@@ -482,7 +494,8 @@
 										{:else}
 											<p class="attachment-row">
 												<MdiIcon path={mdiPaperclip} size={14} />
-												<a href={item.file_url} target="_blank" rel="noreferrer">{item.file_name}</a>
+												<a href={item.file_url} target="_blank" rel="noreferrer">{item.file_name}</a
+												>
 											</p>
 										{/if}
 									</div>

@@ -28,6 +28,7 @@
 	import { PushNotifications } from '@capacitor/push-notifications';
 	import { env } from '$env/dynamic/public';
 	import { buildTaskReminderNotifications } from '$lib/task-reminders';
+	import { registerServiceWorker, requestForNotificationPermission } from '$lib/notificationStuff';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
@@ -476,60 +477,6 @@
 		}
 	}
 
-	async function requestForNotificationPermission() {
-		console.log("push notifications permission request...");
-		if ((await PushNotifications.checkPermissions()).receive === 'granted') return;
-		console.log("requesting push notifications permission...");
-		await PushNotifications.addListener('registration', (token) => {
-			console.log("received FCM registration token:", token.value);
-			fetch('/api/fcm', {
-				method: 'POST',
-				body: JSON.stringify({ token: token.value })
-			});
-		});
-
-		await PushNotifications.requestPermissions();
-		console.log("registering for push notifications...");
-		await PushNotifications.register();
-	}
-
-	async function registerServiceWorker() {
-		console.log('registering service worker...');
-		if ('serviceWorker' in navigator) {
-			const permission = await Notification.requestPermission();
-			console.log('notification permission:', permission);
-			console.log('service worker supported, registering...');
-			const vapidPublic = env.PUBLIC_VAPID_PUBLIC;
-			console.log('VAPID public key:', vapidPublic);
-			if (!vapidPublic) return;
-			const sw = await navigator.serviceWorker.register('/sw.js');
-			const _ = await navigator.serviceWorker.ready;
-			console.log('service worker registered:', sw);
-			if (permission === 'granted') {
-				const subscription = await sw.pushManager.subscribe({
-					userVisibleOnly: true,
-					applicationServerKey: urlBase64ToUint8Array(vapidPublic)
-				});
-				console.log('webpush subscription:', subscription);
-				await fetch('/api/webpush', {
-					method: 'POST',
-					body: JSON.stringify(subscription.toJSON())
-				});
-			}
-		}
-	}
-
-	function urlBase64ToUint8Array(base64String: string) {
-		const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-		const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-		const rawData = window.atob(base64);
-		const outputArray = new Uint8Array(rawData.length);
-		for (let i = 0; i < rawData.length; ++i) {
-			outputArray[i] = rawData.charCodeAt(i);
-		}
-		return outputArray;
-	}
-
 	onMount(() => {
 		let ws: WebSocket | undefined;
 		let disposed = false;
@@ -545,7 +492,7 @@
 			}
 		};
 
-		void getWS()
+		getWS()
 			.then((connectedWS) => {
 				if (disposed) return;
 				ws = connectedWS;
@@ -554,13 +501,13 @@
 			.catch(() => {
 				/* best effort */
 			});
-		void (async () => {
+		(async () => {
 			if (Capacitor.isNativePlatform()) {
-				console.log("requesting notification permission for native platform...");
+				console.log('requesting notification permission for native platform...');
 				await requestForNotificationPermission();
 			} else {
-				console.log("registering service worker for web platform...");
-				await registerServiceWorker();
+				console.log('registering service worker for web platform...');
+				await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
 			}
 		})();
 

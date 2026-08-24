@@ -77,7 +77,8 @@ export function buildTaskNotificationEnvelope(
 		dateStyle: 'medium',
 		timeStyle: task.all_day ? undefined : 'short'
 	});
-	const actionLabel = action === 'created' ? 'created' : action === 'updated' ? 'updated' : 'commented on';
+	const actionLabel =
+		action === 'created' ? 'created' : action === 'updated' ? 'updated' : 'commented on';
 	const subject =
 		action === 'commented'
 			? `New comment on ${task.task_name}`
@@ -122,7 +123,11 @@ export function buildTaskNotificationEnvelope(
 }
 
 function uniqueUserIds(ids: Array<string | null | undefined>): string[] {
-	return [...new Set(ids.filter((id): id is string => typeof id === 'string' && !!id.trim()).map((id) => id.trim()))];
+	return [
+		...new Set(
+			ids.filter((id): id is string => typeof id === 'string' && !!id.trim()).map((id) => id.trim())
+		)
+	];
 }
 
 function escapeHtml(value: string): string {
@@ -143,4 +148,3 @@ function escapeHtml(value: string): string {
 		}
 	});
 }
-

@@ -1,10 +1,10 @@
 <script lang="ts">
-import { onMount } from 'svelte';
-import { WEEKDAYS, toKey, isSameDay, addDays, startOfWeek, hourLabel } from '$lib/calendar';
-import MdiIcon from './MdiIcon.svelte';
-import { mdiCheckboxMarkedCircleOutline, mdiTriangleOutline } from '@mdi/js';
+	import { onMount } from 'svelte';
+	import { WEEKDAYS, toKey, isSameDay, addDays, startOfWeek, hourLabel } from '$lib/calendar';
+	import MdiIcon from './MdiIcon.svelte';
+	import { mdiCheckboxMarkedCircleOutline, mdiTriangleOutline } from '@mdi/js';
 
-import type { RichTask } from '$lib/mock/data';
+	import type { RichTask } from '$lib/mock/data';
 
 	let {
 		viewDate,

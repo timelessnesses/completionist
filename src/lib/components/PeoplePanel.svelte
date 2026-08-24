@@ -20,6 +20,8 @@
 	import type { Person } from '$lib/mock/data';
 	import { getWS } from '$lib/websocket.svelte';
 	import { onMount } from 'svelte';
+	import { Capacitor } from '@capacitor/core';
+	import { LocalNotifications } from '@capacitor/local-notifications';
 
 	let { isOwner = false, viewerId = null }: { isOwner?: boolean; viewerId?: string | null } =
 		$props();
@@ -348,6 +350,27 @@
 			/* ignore */
 		}
 	}
+
+	async function notificationPermission(): Promise<boolean> {
+		if (Capacitor.isNativePlatform()) {
+			const permission = await LocalNotifications.requestPermissions();
+			return permission.display === 'granted';
+		} else {
+			return Notification.permission === 'granted';
+		}
+	}
+
+	let notificationEnabled = $state(false);
+
+	onMount(() => {
+		setInterval(async () => {
+			notificationEnabled = await notificationPermission();
+		}, 1000);
+	});
+
+	function isNativePlatform(): boolean {
+		return Capacitor.isNativePlatform();
+	}
 </script>
 
 <aside class="panel">
@@ -576,6 +599,19 @@
 					<MdiIcon path={mdiChevronRight} size={18} />
 				</a>
 			{/if}
+
+			<button class="setting-action" onclick={() => (window.location.href = '/admin/')}>
+				<span class="setting-ic"><MdiIcon path={mdiMessageTextOutline} size={20} /></span>
+				<span class="setting-text">
+					<span class="setting-title"
+						>{notificationEnabled ? 'Disable' : 'Enable'} Notification on {isNativePlatform()
+							? 'Mobile'
+							: 'Web'}</span
+					>
+					<span class="setting-sub">Subscribe or unsubscribe from notifications</span>
+				</span>
+				<MdiIcon path={mdiChevronRight} size={18} />
+			</button>
 
 			<!-- Logout -->
 			<button class="setting-action danger" onclick={logout}>

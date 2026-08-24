@@ -46,15 +46,17 @@ export async function POST({ request, cookies, platform }) {
 	if (!payload.email_verified) {
 		return new Response(JSON.stringify({ error: 'Email not verified' }), { status: 400 });
 	}
-	let resolvedUser = (await db.query.user_identities.findFirst({
-		where: and(
-			eq(user_identities.provider, 'google'),
-			eq(user_identities.provider_user_id, payload.email)
-		),
-		with: {
-			user: true
-		}
-	}))?.user;
+	let resolvedUser = (
+		await db.query.user_identities.findFirst({
+			where: and(
+				eq(user_identities.provider, 'google'),
+				eq(user_identities.provider_user_id, payload.email)
+			),
+			with: {
+				user: true
+			}
+		})
+	)?.user;
 	if (!resolvedUser) {
 		await db
 			.insert(user)
@@ -69,7 +71,7 @@ export async function POST({ request, cookies, platform }) {
 		const user_t = await db.query.user.findFirst({
 			where: eq(user.name, payload.name as string)
 		});
-		if (!user_t) { 
+		if (!user_t) {
 			throw error(400, `Failed to create user account for ${payload.email}.`);
 		}
 		await db

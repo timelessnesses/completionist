@@ -24,7 +24,7 @@ type TransportBody = {
 };
 
 export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
-	console.log("i am being called!!!!", batch.queue, batch.messages.length, batch.metadata);
+	console.log('i am being called!!!!', batch.queue, batch.messages.length, batch.metadata);
 	if (batch.queue === 'completionist-queue') {
 		await Promise.all(
 			batch.messages.map(async (message) => {
@@ -65,7 +65,8 @@ export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext
 async function handleWebsocketMessage(batch: MessageBatch, env: Env, _ctx: ExecutionContext) {
 	const stub = env.GlobalWS.getByName('global_ws');
 	for (const message of batch.messages) {
-		const payload = typeof message.body === 'string' ? message.body : JSON.stringify(message.body ?? null);
+		const payload =
+			typeof message.body === 'string' ? message.body : JSON.stringify(message.body ?? null);
 		await stub.fetch('https://global-ws.internal/broadcast', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -170,7 +171,10 @@ async function handleGcmMessage(batch: MessageBatch, env: Env, ctx: ExecutionCon
 			continue;
 		}
 
-		const tokens = await db.select().from(fcm_tokens).where(inArray(fcm_tokens.user_id, recipientIds));
+		const tokens = await db
+			.select()
+			.from(fcm_tokens)
+			.where(inArray(fcm_tokens.user_id, recipientIds));
 
 		for (const { token } of tokens) {
 			const res = await fetch(url, {
@@ -243,7 +247,9 @@ function normalizeTransportBody(body: unknown): TransportBody {
 }
 
 function isTaskNotificationEnvelope(body: unknown): body is TaskNotificationEnvelope {
-	return !!body && typeof body === 'object' && (body as { type?: string }).type === 'task_notification';
+	return (
+		!!body && typeof body === 'object' && (body as { type?: string }).type === 'task_notification'
+	);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -10,7 +10,10 @@ type ReminderTask = {
 const DAILY_REMINDER_HOUR = 9;
 const DAILY_REMINDER_MINUTE = 0;
 
-export function buildTaskReminderNotifications(tasks: ReminderTask[], now = new Date()): LocalNotificationSchema[] {
+export function buildTaskReminderNotifications(
+	tasks: ReminderTask[],
+	now = new Date()
+): LocalNotificationSchema[] {
 	const reminders: LocalNotificationSchema[] = [];
 
 	for (const task of tasks) {
@@ -26,8 +29,11 @@ export function buildTaskReminderNotifications(tasks: ReminderTask[], now = new 
 		for (let dayOffset = 0; dayOffset <= daysLeft; dayOffset++) {
 			const reminderDay = addDays(today, dayOffset);
 			const isFinalDay = dayOffset === daysLeft;
-			const notifyAt = isFinalDay ? due : atLocalTime(reminderDay, DAILY_REMINDER_HOUR, DAILY_REMINDER_MINUTE);
-			const scheduledAt = notifyAt.getTime() <= now.getTime() ? new Date(now.getTime() + 60_000) : notifyAt;
+			const notifyAt = isFinalDay
+				? due
+				: atLocalTime(reminderDay, DAILY_REMINDER_HOUR, DAILY_REMINDER_MINUTE);
+			const scheduledAt =
+				notifyAt.getTime() <= now.getTime() ? new Date(now.getTime() + 60_000) : notifyAt;
 			const remainingDays = Math.max(daysLeft - dayOffset, 0);
 			const body =
 				remainingDays === 0
