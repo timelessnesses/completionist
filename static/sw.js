@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
 /// <reference lib="webworker.iterable" />
 
-export {};
 const sw = /** @type {ServiceWorkerGlobalScope} */ (/** @type {unknown} */ (self));
 
 self.addEventListener('push', event => {

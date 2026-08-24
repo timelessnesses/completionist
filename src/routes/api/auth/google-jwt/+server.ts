@@ -46,12 +46,15 @@ export async function POST({ request, cookies, platform }) {
 	if (!payload.email_verified) {
 		return new Response(JSON.stringify({ error: 'Email not verified' }), { status: 400 });
 	}
-	let resolvedUser = await db.query.user.findFirst({
+	let resolvedUser = (await db.query.user_identities.findFirst({
 		where: and(
 			eq(user_identities.provider, 'google'),
 			eq(user_identities.provider_user_id, payload.email)
 		),
-	});
+		with: {
+			user: true
+		}
+	}))?.user;
 	if (!resolvedUser) {
 		await db
 			.insert(user)

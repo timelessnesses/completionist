@@ -477,8 +477,11 @@
 	}
 
 	async function requestForNotificationPermission() {
+		console.log("push notifications permission request...");
 		if ((await PushNotifications.checkPermissions()).receive === 'granted') return;
+		console.log("requesting push notifications permission...");
 		await PushNotifications.addListener('registration', (token) => {
+			console.log("received FCM registration token:", token.value);
 			fetch('/api/fcm', {
 				method: 'POST',
 				body: JSON.stringify({ token: token.value })
@@ -486,20 +489,28 @@
 		});
 
 		await PushNotifications.requestPermissions();
+		console.log("registering for push notifications...");
 		await PushNotifications.register();
 	}
 
 	async function registerServiceWorker() {
+		console.log('registering service worker...');
 		if ('serviceWorker' in navigator) {
+			const permission = await Notification.requestPermission();
+			console.log('notification permission:', permission);
+			console.log('service worker supported, registering...');
 			const vapidPublic = env.PUBLIC_VAPID_PUBLIC;
+			console.log('VAPID public key:', vapidPublic);
 			if (!vapidPublic) return;
 			const sw = await navigator.serviceWorker.register('/sw.js');
-			const permission = await Notification.requestPermission();
+			const _ = await navigator.serviceWorker.ready;
+			console.log('service worker registered:', sw);
 			if (permission === 'granted') {
 				const subscription = await sw.pushManager.subscribe({
 					userVisibleOnly: true,
 					applicationServerKey: urlBase64ToUint8Array(vapidPublic)
 				});
+				console.log('webpush subscription:', subscription);
 				await fetch('/api/webpush', {
 					method: 'POST',
 					body: JSON.stringify(subscription.toJSON())
@@ -545,8 +556,10 @@
 			});
 		void (async () => {
 			if (Capacitor.isNativePlatform()) {
+				console.log("requesting notification permission for native platform...");
 				await requestForNotificationPermission();
 			} else {
+				console.log("registering service worker for web platform...");
 				await registerServiceWorker();
 			}
 		})();

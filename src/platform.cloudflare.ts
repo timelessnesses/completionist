@@ -24,6 +24,7 @@ type TransportBody = {
 };
 
 export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext) {
+	console.log("i am being called!!!!", batch.queue, batch.messages.length, batch.metadata);
 	if (batch.queue === 'completionist-queue') {
 		await Promise.all(
 			batch.messages.map(async (message) => {
