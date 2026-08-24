@@ -50,6 +50,7 @@ export async function registerServiceWorker(vapidPublicKey: string) {
 		const _ = await navigator.serviceWorker.ready;
 		console.log('service worker registered:', sw);
 		if (permission === 'granted') {
+			console.log('notification permission granted, subscribing to push notifications...');
 			const subscription = await sw.pushManager.subscribe({
 				userVisibleOnly: true,
 				applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)

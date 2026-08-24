@@ -506,8 +506,10 @@
 				console.log('requesting notification permission for native platform...');
 				await requestForNotificationPermission();
 			} else {
-				/* console.log('registering service worker for web platform...');
-				await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC); */
+				if (await Notification.requestPermission() === 'granted') {
+					console.log('notification permission granted, registering service worker...');
+					await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
+				}
 			}
 		})();
 

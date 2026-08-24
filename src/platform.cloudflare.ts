@@ -122,11 +122,13 @@ async function handleEmailMessage(batch: MessageBatch, env: Env, _ctx: Execution
 	const db = getDb(env.COMPLETIONIST_DB);
 	const resend = new Resend(env.RESEND_API_KEY);
 	const emails: Array<{ from: string; to: string; subject: string; html: string }> = [];
-
+	console.log(`processing ${batch.messages.length} email messages...`);
 	for (const message of batch.messages) {
+		console.log('processing message:', message.body);
 		const body = normalizeTransportBody(message.body);
 		const recipientIds = body.recipient_user_ids ?? [];
 		if (recipientIds.length === 0) {
+			console.log('message has no recipients, skipping...');
 			message.ack();
 			continue;
 		}
@@ -137,11 +139,13 @@ async function handleEmailMessage(batch: MessageBatch, env: Env, _ctx: Execution
 			})
 			.from(user_identities)
 			.where(and(inArray(user_identities.user_id, recipientIds), isNotNull(user_identities.email)));
+		console.log(`found ${identities.length} identities with email addresses for recipients...`);
 
 		for (const identity of identities) {
 			if (!identity.email) continue;
+			console.log(`queueing email to ${identity.email}...`);
 			emails.push({
-				from: 'completionist@timelessnesses.me',
+				from: 'notify@coworking-calendar.timelessnesses.me',
 				to: identity.email,
 				subject: body.subject,
 				html: body.html
@@ -152,7 +156,9 @@ async function handleEmailMessage(batch: MessageBatch, env: Env, _ctx: Execution
 	}
 
 	if (emails.length > 0) {
+		console.log(`sending ${emails.length} emails via Resend...`);
 		await resend.batch.send(emails);
+		console.log('emails sent successfully.');
 	}
 }
 
