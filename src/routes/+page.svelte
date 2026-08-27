@@ -16,10 +16,13 @@
 		mdiPlusCircleOutline,
 		mdiMagnify,
 		mdiCircleOutline,
-		mdiCheckboxMarkedCircleOutline
+		mdiCheckboxMarkedCircleOutline,
+		mdiChevronDown,
+		mdiChevronRight
 	} from '@mdi/js';
 	import type { PageProps } from './$types';
-	import type { RichTask, UserSummary } from '$lib/mock/data';
+	import type { RichTask, UserSummary } from '$lib/features/tasks/types';
+	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 	import { onMount, tick } from 'svelte';
 	import { getWS } from '$lib/websocket.svelte';
 	import { invalidateAll } from '$app/navigation';
@@ -36,6 +39,7 @@
 	let taskBoardOpen = $state(false);
 	let selectedTaskId = $state<string | null>(null);
 	let taskSearch = $state('');
+	let foldedTaskIds = $state(new Set<string>());
 	let taskBusy = $state(false);
 	let taskAction = $state<'none' | 'save' | 'toggle' | 'comment' | 'attachment'>('none');
 	let taskError = $state('');
@@ -74,9 +78,27 @@
 	let { data }: PageProps = $props();
 	let events = $state<RichTask[]>(data.event);
 	const upcoming = $derived.by(() =>
-		[...(data.upcoming ?? events)]
-			.filter((task) => new Date(task.start_at) >= startOfToday())
-			.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+		[...events]
+			.filter(
+				(task) =>
+					!task.completed &&
+					task.status !== 'cancelled' &&
+					new Date(task.start_at) >= startOfToday()
+			)
+			.sort(
+				(a, b) =>
+					assignmentRank(a) - assignmentRank(b) || +new Date(a.start_at) - +new Date(b.start_at)
+			)
+	);
+	const lateTasks = $derived.by(() =>
+		[...events]
+			.filter(
+				(task) =>
+					!task.completed && task.status !== 'cancelled' && +new Date(task.end_at) < Date.now()
+			)
+			.sort(
+				(a, b) => assignmentRank(a) - assignmentRank(b) || +new Date(a.end_at) - +new Date(b.end_at)
+			)
 	);
 	const { filters } = data;
 	const users = (data.users ?? []) as UserSummary[];
@@ -97,15 +119,96 @@
 			})
 			.sort(compareTasks)
 	);
+	type TaskRow = { key: string; task: RichTask; depth: number; hasChildren: boolean };
+	const taskRows = $derived.by(() => {
+		const query = taskSearch.trim().toLowerCase();
+		const children = new Map<string, RichTask[]>();
+		const dependencyParents = new Map<string, RichTask[]>();
+		const dependencyIds = new Set<string>();
+		for (const task of events) {
+			if (task.parent && taskMap.has(task.parent)) {
+				children.set(task.parent, [...(children.get(task.parent) ?? []), task]);
+			}
+			for (const link of task.dependencies ?? []) {
+				const dependency = taskMap.get(link.dependency_id);
+				if (!dependency) continue;
+				dependencyIds.add(dependency.id);
+				dependencyParents.set(dependency.id, [
+					...(dependencyParents.get(dependency.id) ?? []),
+					task
+				]);
+			}
+		}
+		for (const list of children.values()) list.sort(compareTasks);
+
+		const nestedTasks = (current: RichTask): RichTask[] => {
+			const combined = [
+				...(children.get(current.id) ?? []),
+				...(current.dependencies ?? [])
+					.map((link) => taskMap.get(link.dependency_id))
+					.filter((task): task is RichTask => !!task)
+			];
+			return [...new Map(combined.map((task) => [task.id, task])).values()].sort(compareTasks);
+		};
+
+		const visibleIds = new Set(activeTasks.map((task) => task.id));
+		if (query) {
+			const queue = [...visibleIds];
+			while (queue.length) {
+				const id = queue.shift()!;
+				const current = taskMap.get(id);
+				const ancestors = [
+					...(current?.parent ? [taskMap.get(current.parent)] : []),
+					...(dependencyParents.get(id) ?? [])
+				].filter((task): task is RichTask => !!task);
+				for (const ancestor of ancestors) {
+					if (visibleIds.has(ancestor.id)) continue;
+					visibleIds.add(ancestor.id);
+					queue.push(ancestor.id);
+				}
+			}
+		}
+
+		const rows: TaskRow[] = [];
+		const covered = new Set<string>();
+		const walk = (task: RichTask, depth: number, ancestry: Set<string>, path: string) => {
+			if (ancestry.has(task.id)) return;
+			covered.add(task.id);
+			const nested = nestedTasks(task);
+			if (!query || visibleIds.has(task.id))
+				rows.push({ key: `${path}/${task.id}`, task, depth, hasChildren: nested.length > 0 });
+			if (!query && foldedTaskIds.has(task.id)) return;
+			const nextAncestry = new Set(ancestry).add(task.id);
+			for (const child of nested) walk(child, depth + 1, nextAncestry, `${path}/${task.id}`);
+		};
+
+		for (const root of events
+			.filter((task) => (!task.parent || !taskMap.has(task.parent)) && !dependencyIds.has(task.id))
+			.sort(compareTasks)) {
+			walk(root, 0, new Set(), 'root');
+		}
+		for (const task of [...events].sort(compareTasks)) {
+			if (!covered.has(task.id)) walk(task, 0, new Set(), 'root');
+		}
+		return rows;
+	});
 	const taskCount = $derived(events.length);
 	const completedCount = $derived(events.filter((task) => !!task.completed).length);
-	const projectCount = $derived(events.filter((task) => (task.subtasks?.length ?? 0) > 0).length);
+	const projectCount = $derived(
+		events.filter(
+			(task) => (task.subtasks?.length ?? 0) > 0 || (task.dependencies?.length ?? 0) > 0
+		).length
+	);
 	const selectedTask = $derived(
 		(selectedTaskId ? taskMap.get(selectedTaskId) : null) ??
 			activeTasks.find((task) => !task.completed) ??
 			activeTasks[0] ??
 			null
 	);
+
+	$effect(() => {
+		events = data.event;
+	});
 
 	function onCreated(ev: RichTask) {
 		events = [...events, ev];
@@ -159,23 +262,22 @@
 		}
 	}
 
-	function rgbToHex(color: { r: number; g: number; b: number }): string {
-		return `#${[color.r, color.g, color.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
-	}
-
-	function hexToRgb(hex: string): { r: number; g: number; b: number } {
-		const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-		if (!match) return { r: 11, g: 87, b: 208 };
-		return {
-			r: parseInt(match[1], 16),
-			g: parseInt(match[2], 16),
-			b: parseInt(match[3], 16)
-		};
-	}
-
 	function startOfToday(): Date {
 		const now = new Date();
 		return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+	}
+
+	function assignmentRank(task: RichTask): number {
+		if (viewerId && (task.assignees ?? []).some((assignee) => assignee.user_id === viewerId))
+			return 0;
+		if (viewerId && task.owner === viewerId) return 1;
+		return 2;
+	}
+
+	function toggleTaskFold(id: string) {
+		const next = new Set(foldedTaskIds);
+		next.has(id) ? next.delete(id) : next.add(id);
+		foldedTaskIds = next;
 	}
 
 	function compareTasks(a: RichTask, b: RichTask): number {
@@ -280,7 +382,7 @@
 			id: task.id,
 			task_name: task.task_name,
 			description: task.description ?? '',
-			color: rgbToHex(task.color),
+			color: colorToHex(task.color),
 			completed: !!task.completed,
 			assigneeIds: (task.assignees ?? []).map((assignee) => assignee.user_id),
 			dependencyIds: (task.dependencies ?? []).map((dependency) => dependency.dependency_id),
@@ -308,7 +410,7 @@
 				body: JSON.stringify({
 					task_name: taskDraft.task_name.trim(),
 					description: taskDraft.description.trim() || null,
-					color: hexToRgb(taskDraft.color),
+					color: hexToColor(taskDraft.color),
 					completed: taskDraft.completed ? Date.now() : null,
 					assignee_ids: taskDraft.assigneeIds,
 					dependency_ids: taskDraft.dependencyIds,
@@ -393,7 +495,10 @@
 			tagDraft = '';
 			return;
 		}
-		taskDraft.tagDrafts = [...taskDraft.tagDrafts, { tag: text, color: hexToRgb(taskDraft.color) }];
+		taskDraft.tagDrafts = [
+			...taskDraft.tagDrafts,
+			{ tag: text, color: hexToColor(taskDraft.color) }
+		];
 		tagDraft = '';
 	}
 
@@ -506,7 +611,7 @@
 				console.log('requesting notification permission for native platform...');
 				await requestForNotificationPermission();
 			} else {
-				if (await Notification.requestPermission() === 'granted') {
+				if ((await Notification.requestPermission()) === 'granted') {
 					console.log('notification permission granted, registering service worker...');
 					await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
 				}
@@ -537,7 +642,7 @@
 			<button class="close" aria-label="Close menu" onclick={closeAll}>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
-			<SideRail {events} {upcoming} onCreate={() => (createOpen = true)} />
+			<SideRail {events} {upcoming} late={lateTasks} onCreate={() => (createOpen = true)} />
 		</div>
 
 		<MonthView
@@ -601,44 +706,70 @@
 
 			<div class="task-grid">
 				<aside class="task-list">
-					{#each activeTasks as task (task.id)}
-						<button
-							class="task-pill"
-							class:selected={selectedTask?.id === task.id}
-							class:completed={!!task.completed}
-							onclick={() => (selectedTaskId = task.id)}
+					{#each taskRows as row, index (row.key)}
+						{@const task = row.task}
+						<div
+							class="task-row"
+							class:root-task={row.depth === 0}
+							style:--task-depth={row.depth}
+							style:--reveal-index={Math.min(index, 12)}
 						>
-							<div class="pill-head">
-								<span class="status-dot" style:background={rgbToHex(task.color)}></span>
-								<strong>{task.task_name}</strong>
-								{#if task.completed}
-									<MdiIcon path={mdiCheckboxMarkedCircleOutline} size={16} />
-								{:else}
-									<MdiIcon path={mdiCircleOutline} size={16} />
-								{/if}
-							</div>
-							<div class="pill-meta">
-								<span>{taskProjectScore(task)} score</span>
-								<span>{task.subtasks?.length ?? 0} children</span>
-								<span>{task.assignees?.length ?? 0} assignees</span>
-							</div>
-							{#if (task.tags ?? []).length}
-								<div class="pill-tags">
-									{#each (task.tags ?? []).slice(0, 4) as tag}
-										<span class="mini-tag">
-											<span
-												class="tag-dot"
-												style:background={rgbToHex(tag.tag?.color ?? task.color)}
-											></span>
-											{tag.tag?.tag}
-										</span>
-									{/each}
+							{#if row.hasChildren}
+								<button
+									class="fold-btn"
+									type="button"
+									aria-label={foldedTaskIds.has(task.id) ? 'Expand task' : 'Collapse task'}
+									onclick={() => toggleTaskFold(task.id)}
+								>
+									<MdiIcon
+										path={foldedTaskIds.has(task.id) ? mdiChevronRight : mdiChevronDown}
+										size={17}
+									/>
+								</button>
+							{:else}
+								<span class="fold-spacer"></span>
+							{/if}
+							<button
+								class="task-pill"
+								class:selected={selectedTask?.id === task.id}
+								class:completed={!!task.completed}
+								onclick={() => (selectedTaskId = task.id)}
+							>
+								<div class="pill-head">
+									<span class="status-dot" style:background={colorToHex(task.color)}></span>
+									<strong>{task.task_name}</strong>
+									{#if task.completed}
+										<MdiIcon path={mdiCheckboxMarkedCircleOutline} size={16} />
+									{:else}
+										<MdiIcon path={mdiCircleOutline} size={16} />
+									{/if}
 								</div>
-							{/if}
-							{#if task.completed}
-								<div class="pill-note">Completed</div>
-							{/if}
-						</button>
+								<div class="pill-meta">
+									<span>{taskProjectScore(task)} score</span>
+									<span>{task.subtasks?.length ?? 0} children</span>
+									{#if (task.dependencies?.length ?? 0) > 0}
+										<span>{task.dependencies?.length ?? 0} dependencies</span>
+									{/if}
+									<span>{task.assignees?.length ?? 0} assignees</span>
+								</div>
+								{#if (task.tags ?? []).length}
+									<div class="pill-tags">
+										{#each (task.tags ?? []).slice(0, 4) as tag}
+											<span class="mini-tag">
+												<span
+													class="tag-dot"
+													style:background={colorToHex(tag.tag?.color ?? task.color)}
+												></span>
+												{tag.tag?.tag}
+											</span>
+										{/each}
+									</div>
+								{/if}
+								{#if task.completed}
+									<div class="pill-note">Completed</div>
+								{/if}
+							</button>
+						</div>
 					{/each}
 				</aside>
 
@@ -708,7 +839,7 @@
 										<button type="button" class="chip" onclick={() => removeDraftTag(index)}>
 											<span
 												class="tag-dot"
-												style:background={tag.color ? rgbToHex(tag.color) : taskDraft.color}
+												style:background={tag.color ? colorToHex(tag.color) : taskDraft.color}
 											></span>
 											{tag.tag}
 										</button>
@@ -741,7 +872,7 @@
 													{ id: tag.id, tag: tag.tag, color: tag.color }
 												])}
 										>
-											<span class="tag-dot" style:background={rgbToHex(tag.color)}></span>
+											<span class="tag-dot" style:background={colorToHex(tag.color)}></span>
 											{tag.tag}
 										</button>
 									{/each}
@@ -969,12 +1100,14 @@
 		padding: 18px 18px 24px;
 		overflow: auto;
 		z-index: 55;
+		animation: workbench-pop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
 	}
 	.task-overlay {
 		position: fixed;
 		inset: 0;
 		z-index: 50;
 		background: rgba(15, 23, 42, 0.42);
+		animation: scrim-in 180ms ease-out both;
 	}
 	.task-close {
 		position: absolute;
@@ -1071,6 +1204,46 @@
 		max-height: calc(100dvh - 220px);
 		overflow: auto;
 	}
+	.task-row {
+		display: grid;
+		grid-template-columns: 24px minmax(0, 1fr);
+		align-items: start;
+		gap: 4px;
+		margin-left: calc(var(--task-depth) * 15px);
+		animation: task-reveal 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+		animation-delay: calc(var(--reveal-index) * 28ms);
+	}
+	.task-row.root-task:not(:first-child) {
+		margin-top: 8px;
+		padding-top: 12px;
+		border-top: 1px solid var(--color-border);
+	}
+	.root-task .task-pill {
+		background: color-mix(in oklch, var(--color-primary) 8%, var(--color-card));
+		border-radius: 14px;
+	}
+	.root-task .pill-head strong {
+		font-size: 14px;
+		letter-spacing: -0.01em;
+	}
+	.fold-btn,
+	.fold-spacer {
+		width: 24px;
+		height: 34px;
+	}
+	.fold-btn {
+		display: grid;
+		place-items: center;
+		border: 0;
+		border-radius: 8px;
+		background: transparent;
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+	}
+	.fold-btn:hover {
+		background: var(--color-muted);
+		color: var(--color-foreground);
+	}
 	.task-pill {
 		display: flex;
 		flex-direction: column;
@@ -1099,6 +1272,46 @@
 	.task-pill.completed {
 		opacity: 0.55;
 		transform: translateY(6px);
+	}
+	@keyframes task-reveal {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+	@keyframes workbench-pop {
+		from {
+			opacity: 0;
+			transform: translateY(18px) scale(0.985);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0) scale(1);
+		}
+	}
+	@keyframes scrim-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.task-row {
+			animation: none;
+		}
+		.task-pill {
+			transition: none;
+		}
+		.task-workbench,
+		.task-overlay {
+			animation: none;
+		}
 	}
 	.pill-head,
 	.pill-meta,

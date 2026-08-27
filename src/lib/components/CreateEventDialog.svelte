@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { mdiClose, mdiAccountMultipleOutline, mdiLinkVariant } from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
-	import type { FilterTag, RichTask, UserSummary } from '$lib/mock/data';
+	import type { FilterTag, RichTask, UserSummary } from '$lib/features/tasks/types';
+	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 
 	let {
 		open = $bindable(false),
@@ -75,19 +76,6 @@
 		selectedTags = [];
 	}
 
-	function hexToRgb(hex: string): { r: number; g: number; b: number } {
-		const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-		return {
-			r: parseInt(m![1], 16),
-			g: parseInt(m![2], 16),
-			b: parseInt(m![3], 16)
-		};
-	}
-
-	function rgbToHex(c: { r: number; g: number; b: number }): string {
-		return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
-	}
-
 	function addTag(tag: FilterTag) {
 		if (selectedTags.some((picked) => picked.id === tag.id || picked.tag === tag.tag)) return;
 		selectedTags = [...selectedTags, { id: tag.id, tag: tag.tag, color: tag.color }];
@@ -101,7 +89,7 @@
 			tagInput = '';
 			return;
 		}
-		selectedTags = [...selectedTags, { tag: trimmed, color: hexToRgb(color) }];
+		selectedTags = [...selectedTags, { tag: trimmed, color: hexToColor(color) }];
 		tagInput = '';
 	}
 
@@ -156,7 +144,7 @@
 				body: JSON.stringify({
 					task_name: title.trim(),
 					description: description.trim() || null,
-					color: hexToRgb(color),
+					color: hexToColor(color),
 					start_at: start.getTime(),
 					end_at: end.getTime(),
 					all_day: allDay ? 1 : 0,
@@ -193,9 +181,14 @@
 
 {#if open}
 	<!-- scrim -->
-	<button class="scrim" aria-label="Close create event" onclick={close}></button>
+	<button class="task-dialog-scrim" aria-label="Close create event" onclick={close}></button>
 
-	<div class="sheet" role="dialog" aria-modal="true" aria-label="Create event">
+	<div
+		class="task-dialog task-dialog--create"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Create event"
+	>
 		<div class="grabber" aria-hidden="true"></div>
 		<header class="head">
 			<h2>Create event</h2>
@@ -375,7 +368,7 @@
 					<div class="selected-tags">
 						{#each selectedTags as tag, index (tag.id ?? `${tag.tag}-${index}`)}
 							<button type="button" class="tag-chip" onclick={() => removeTagAt(index)}>
-								<span class="tag-dot" style:background={tag.color ? rgbToHex(tag.color) : color}
+								<span class="tag-dot" style:background={tag.color ? colorToHex(tag.color) : color}
 								></span>
 								{tag.tag}
 							</button>
@@ -385,7 +378,7 @@
 						<div class="suggestions">
 							{#each tagSuggestions as tag (tag.id)}
 								<button type="button" class="suggestion" onclick={() => addTag(tag)}>
-									<span class="tag-dot" style:background={rgbToHex(tag.color)}></span>
+									<span class="tag-dot" style:background={colorToHex(tag.color)}></span>
 									{tag.tag}
 								</button>
 							{/each}
@@ -409,89 +402,20 @@
 {/if}
 
 <style>
-	.scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 60;
-		border: 0;
-		padding: 0;
-		cursor: default;
-		background: rgba(15, 23, 42, 0.35);
-	}
-
-	/* Desktop: centred dialog */
-	.sheet {
-		position: fixed;
-		z-index: 61;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
+	.task-dialog--create {
 		width: min(480px, calc(100vw - 32px));
 		max-height: calc(100dvh - 64px);
-		overflow-y: auto;
-		background: var(--color-background);
-		border-radius: 16px;
-		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
 		padding: 8px 20px 20px;
 	}
 	.grabber {
 		display: none;
 	}
 
-	.head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
+	.task-dialog--create .head {
 		padding: 4px 0;
 	}
-	h2 {
-		margin: 0;
-		font-size: 16px;
-		font-weight: 500;
-		/* color: #1f1f1f; */
-	}
-	.icon {
-		display: grid;
-		place-items: center;
-		width: 34px;
-		height: 34px;
-		border: 0;
-		border-radius: 50%;
-		background: none;
-		/* color: #444746; */
-		cursor: pointer;
-	}
-	.icon:hover {
-		background: var(--color-foreground);
-		color: var(--color-background);
-	}
-
-	.body {
-		display: flex;
-		flex-direction: column;
+	.task-dialog--create .body {
 		gap: 14px;
-		margin-top: 8px;
-	}
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	.field input[type='date'],
-	.field input[type='time'],
-	.field textarea,
-	.title-input {
-		font: inherit;
-		font-size: 13.5px;
-		color: var(--color-foreground);
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		padding: 9px 12px;
-		background: var(--color-background);
-		width: 100%;
-	}
-	.field textarea {
-		resize: vertical;
 	}
 	.title-input {
 		border: 0;
@@ -505,57 +429,10 @@
 		border-bottom-color: var(--color-primary);
 		border-bottom-width: 2px;
 	}
-	.lbl {
-		font-size: 12px;
-		/* color: #444746; */
-	}
-	.grid2 {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 12px;
-	}
-	.row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13.5px;
-		/* color: #1f1f1f; */
-	}
-
-	.swatches {
-		display: flex;
-		gap: 8px;
-		flex-wrap: wrap;
-	}
-	.color-row {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-	.picker {
-		width: 52px;
-		height: 36px;
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
-		background: transparent;
-		padding: 3px;
-	}
 	.tag-row {
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-	}
-	.tag-input-wrap {
-		display: flex;
-		gap: 8px;
-	}
-	.tag-input {
-		flex: 1;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		padding: 9px 12px;
-		background: var(--color-background);
-		color: var(--color-foreground);
 	}
 	.mini {
 		border: 0;
@@ -565,79 +442,19 @@
 		padding: 0 12px;
 		font-size: 12px;
 	}
-	.selected-tags,
-	.suggestions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-	.tag-chip,
-	.suggestion {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		border: 1px solid var(--color-border);
-		border-radius: 999px;
-		padding: 8px 12px;
-		background: var(--color-background);
-		color: var(--color-foreground);
-		font-size: 12px;
-	}
 	.tag-dot {
 		width: 10px;
 		height: 10px;
 		border-radius: 999px;
 		flex-shrink: 0;
 	}
-	.swatch {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		border: 2px solid transparent;
-		cursor: pointer;
-		padding: 0;
-	}
-
-	.err {
-		margin: 0;
-		font-size: 12.5px;
-		color: #a50e0e;
-	}
-
-	.foot {
-		display: flex;
+	.task-dialog--create .foot {
 		justify-content: flex-end;
-		gap: 8px;
-		margin-top: 4px;
-	}
-	.btn {
-		border: 0;
-		border-radius: 999px;
-		padding: 9px 20px;
-		cursor: pointer;
-		font: inherit;
-		font-size: 13.5px;
-		font-weight: 600;
-	}
-	.btn.ghost {
-		background: none;
-		color: #0b57d0;
-	}
-	.btn.ghost:hover {
-		background: #eef2f7;
-	}
-	.btn.primary {
-		background: #0b57d0;
-		color: #fff;
-	}
-	.btn.primary:disabled {
-		opacity: 0.6;
-		cursor: default;
 	}
 
 	/* Mobile: Google-Calendar style bottom sheet that takes the lower space */
 	@media (max-width: 860px) {
-		.sheet {
+		.task-dialog--create {
 			top: auto;
 			bottom: 0;
 			left: 0;

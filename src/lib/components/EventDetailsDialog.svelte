@@ -7,7 +7,8 @@
 		mdiPaperclip
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
-	import type { RichTask, UserSummary } from '$lib/mock/data';
+	import type { RichTask, UserSummary } from '$lib/features/tasks/types';
+	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 
 	let {
 		open = $bindable(false),
@@ -90,7 +91,7 @@
 		startTime = toTimeInput(start);
 		endTime = toTimeInput(end);
 		allDay = !!event.all_day;
-		color = rgbToHex(event.color);
+		color = colorToHex(event.color);
 		completed = !!event.completed;
 		selectedAssigneeIds = (event.assignees ?? []).map((a) => a.user_id);
 		selectedDependencyIds = (event.dependencies ?? []).map((d) => d.dependency_id);
@@ -112,19 +113,6 @@
 
 	function toTimeInput(d: Date): string {
 		return `${`${d.getHours()}`.padStart(2, '0')}:${`${d.getMinutes()}`.padStart(2, '0')}`;
-	}
-
-	function rgbToHex(c: { r: number; g: number; b: number }): string {
-		return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
-	}
-
-	function hexToRgb(hex: string): { r: number; g: number; b: number } {
-		const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-		return {
-			r: parseInt(m![1], 16),
-			g: parseInt(m![2], 16),
-			b: parseInt(m![3], 16)
-		};
 	}
 
 	function addAssignee(user: UserSummary) {
@@ -197,7 +185,7 @@
 				body: JSON.stringify({
 					task_name: title.trim(),
 					description: description.trim() || null,
-					color: hexToRgb(color),
+					color: hexToColor(color),
 					start_at: start.getTime(),
 					end_at: end.getTime(),
 					all_day: allDay ? 1 : 0,
@@ -249,9 +237,14 @@
 </script>
 
 {#if open && event}
-	<button class="scrim" aria-label="Close event details" onclick={close}></button>
+	<button class="task-dialog-scrim" aria-label="Close event details" onclick={close}></button>
 
-	<div class="sheet" role="dialog" aria-modal="true" aria-label="Event details">
+	<div
+		class="task-dialog task-dialog--details"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Event details"
+	>
 		<header class="head">
 			<h2>{canEdit ? 'Edit event' : 'Event details'}</h2>
 			<button class="icon" aria-label="Close" onclick={close}>
@@ -513,171 +506,13 @@
 {/if}
 
 <style>
-	.scrim {
-		position: fixed;
-		inset: 0;
-		z-index: 60;
-		border: 0;
-		padding: 0;
-		background: rgba(15, 23, 42, 0.35);
-	}
-	.sheet {
-		position: fixed;
-		z-index: 61;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
+	.task-dialog--details {
 		width: min(520px, calc(100vw - 24px));
 		max-height: calc(100dvh - 48px);
-		overflow-y: auto;
-		background: var(--color-background);
-		border-radius: 16px;
-		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
 		padding: 10px 18px 18px;
-	}
-	.head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-	}
-	h2 {
-		margin: 0;
-		font-size: 16px;
-		font-weight: 500;
-		/* color: #1f1f1f; */
-	}
-	.icon {
-		display: grid;
-		place-items: center;
-		width: 34px;
-		height: 34px;
-		border: 0;
-		border-radius: 50%;
-		background: none;
-		/* color: #444746; */
-		cursor: pointer;
-	}
-	.icon:hover {
-		background: var(--color-foreground);
-		color: var(--color-background);
-	}
-
-	.body {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		margin-top: 8px;
-	}
-	.field {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	.field input,
-	.field textarea {
-		font: inherit;
-		font-size: 13.5px;
-		color: var(--color-foreground);
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		padding: 9px 12px;
-		background: var(--color-background);
-		width: 100%;
-	}
-	.field textarea {
-		resize: vertical;
-	}
-	.lbl {
-		font-size: 12px;
-		/* color: #444746; */
-	}
-	.grid2 {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 12px;
-	}
-	.row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 13.5px;
-		/* color: #1f1f1f; */
-	}
-
-	.swatches {
-		display: flex;
-		gap: 8px;
-		flex-wrap: wrap;
-	}
-	.color-row {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-	}
-	.picker {
-		width: 52px;
-		height: 36px;
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
-		background: transparent;
-		padding: 3px;
-	}
-	.swatch {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		border: 2px solid transparent;
-		cursor: pointer;
-		padding: 0;
-	}
-	.swatch.selected {
-		border-color: var(--color-foreground);
-	}
-	.err {
-		margin: 0;
-		font-size: 12.5px;
-		color: var(--color-danger);
-	}
-
-	.foot {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-top: 4px;
 	}
 	.spacer {
 		flex: 1;
-	}
-	.btn {
-		border: 0;
-		border-radius: 999px;
-		padding: 9px 16px;
-		cursor: pointer;
-		font: inherit;
-		font-size: 13px;
-		font-weight: 600;
-		display: inline-flex;
-		gap: 6px;
-		align-items: center;
-	}
-	.btn.ghost {
-		background: none;
-		color: var(--color-primary);
-	}
-	.btn.ghost:hover {
-		background: var(--color-muted);
-	}
-	.btn.primary {
-		background: var(--color-primary);
-		color: var(--color-primary-foreground);
-	}
-	.btn.danger {
-		background: var(--color-danger-muted);
-		color: var(--color-danger);
-	}
-	.btn:disabled {
-		opacity: 0.6;
-		cursor: default;
 	}
 
 	.title {
@@ -700,107 +535,5 @@
 		margin: 8px 0 0;
 		font-size: 12px;
 		/* color: #5f6368; */
-	}
-	.selected-tags,
-	.suggestions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
-	}
-	.tag-input-wrap {
-		display: flex;
-		gap: 8px;
-	}
-	.tag-input {
-		flex: 1;
-		border: 1px solid var(--color-border);
-		border-radius: 8px;
-		padding: 9px 12px;
-		background: var(--color-background);
-		color: var(--color-foreground);
-	}
-	.tag-chip,
-	.suggestion {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		border: 1px solid var(--color-border);
-		border-radius: 999px;
-		padding: 8px 12px;
-		background: var(--color-background);
-		color: var(--color-foreground);
-		font-size: 12px;
-	}
-	.thread {
-		border: 1px solid var(--color-border);
-		border-radius: 16px;
-		background: var(--color-muted);
-		overflow: hidden;
-	}
-	.thread summary {
-		list-style: none;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		padding: 12px 14px;
-		cursor: pointer;
-	}
-	.thread summary::-webkit-details-marker {
-		display: none;
-	}
-	.thread-count {
-		min-width: 1.75rem;
-		padding: 2px 8px;
-		border-radius: 999px;
-		background: var(--color-background);
-		color: var(--color-foreground);
-		font-size: 12px;
-		text-align: center;
-	}
-	.thread-body {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		padding: 0 14px 14px;
-	}
-	.thread-empty {
-		margin: 0;
-		font-size: 13px;
-		color: var(--color-muted-foreground);
-	}
-	.comment-list {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.thread-item {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 10px 12px;
-		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		background: var(--color-background);
-	}
-	.thread-item.attachment {
-		border-style: dashed;
-	}
-	.comment-head {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: 10px;
-		font-size: 12px;
-		color: var(--color-muted-foreground);
-	}
-	.thread-item p {
-		margin: 0;
-		white-space: pre-wrap;
-	}
-	.attachment-row {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
 	}
 </style>

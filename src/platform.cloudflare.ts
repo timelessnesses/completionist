@@ -1,6 +1,6 @@
 import { getDb } from '$lib/server/db';
-import { fcm_tokens, push_subscriptions, user_identities } from '$lib/server/db/schema';
-import { and, eq, inArray, isNotNull } from 'drizzle-orm';
+import { fcm_tokens, push_subscriptions, task, user_identities } from '$lib/server/db/schema';
+import { and, eq, gte, inArray, isNotNull, isNull, lt, ne } from 'drizzle-orm';
 import * as web_push from 'web-push';
 import { Resend } from 'resend';
 import type { TaskNotificationEnvelope } from '$lib/server/task-fanout';
@@ -60,6 +60,92 @@ export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext
 	} else if (batch.queue === 'websocket-queue') {
 		await handleWebsocketMessage(batch, env, ctx);
 	}
+}
+
+export async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+	const run =
+		controller.cron === '0 0 * * *'
+			? sendFourteenDayEmailReminders(controller.scheduledTime, env)
+			: sendEndingSoonReminders(controller.scheduledTime, env);
+	ctx.waitUntil(run);
+}
+
+async function sendEndingSoonReminders(scheduledTime: number, env: Env) {
+	const db = getDb(env.COMPLETIONIST_DB);
+	const from = new Date(scheduledTime);
+	const until = new Date(scheduledTime + 10 * 60_000);
+	const ending = await db.query.task.findMany({
+		where: and(
+			isNull(task.deleted_at),
+			gte(task.end_at, from),
+			lt(task.end_at, until),
+			isNull(task.completed),
+			ne(task.status, 'cancelled')
+		),
+		with: { assignees: true }
+	});
+
+	for (const item of ending) {
+		const key = `reminder:ending:${item.id}:${Math.floor(+item.end_at / 600_000)}`;
+		if (await env.COMPLETIONIST_KV.get(key)) continue;
+		const minutes = Math.max(1, Math.ceil((+item.end_at - scheduledTime) / 60_000));
+		const recipients = uniqueIds([item.owner, ...item.assignees.map((a) => a.user_id)]);
+		await env.COMPLETIONIST_QUEUE.send({
+			subject: `${item.task_name} ends soon`,
+			message: `This task ends in about ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+			html: reminderHtml(
+				item.task_name,
+				`This task ends in about ${minutes} minute${minutes === 1 ? '' : 's'}.`
+			),
+			data: { type: 'task_ending_soon', task_id: item.id, end_at: String(+item.end_at) },
+			recipient_user_ids: recipients
+		});
+		await env.COMPLETIONIST_KV.put(key, 'sent', { expirationTtl: 86_400 });
+	}
+}
+
+async function sendFourteenDayEmailReminders(scheduledTime: number, env: Env) {
+	const db = getDb(env.COMPLETIONIST_DB);
+	const bangkokNow = new Date(scheduledTime + 7 * 3_600_000);
+	const targetLocalMidnightUtc = Date.UTC(
+		bangkokNow.getUTCFullYear(),
+		bangkokNow.getUTCMonth(),
+		bangkokNow.getUTCDate() + 14,
+		-7
+	);
+	const due = await db.query.task.findMany({
+		where: and(
+			isNull(task.deleted_at),
+			gte(task.end_at, new Date(targetLocalMidnightUtc)),
+			lt(task.end_at, new Date(targetLocalMidnightUtc + 86_400_000)),
+			isNull(task.completed),
+			ne(task.status, 'cancelled')
+		),
+		with: { assignees: true }
+	});
+
+	const dateKey = bangkokNow.toISOString().slice(0, 10);
+	for (const item of due) {
+		const key = `reminder:fourteen-days:${item.id}:${dateKey}`;
+		if (await env.COMPLETIONIST_KV.get(key)) continue;
+		const message = `You have 14 days left to complete "${item.task_name}".`;
+		await env.EMAIL_QUEUE.send({
+			subject: `14 days left: ${item.task_name}`,
+			message,
+			html: reminderHtml(item.task_name, message),
+			data: { type: 'task_fourteen_days', task_id: item.id, end_at: String(+item.end_at) },
+			recipient_user_ids: uniqueIds([item.owner, ...item.assignees.map((a) => a.user_id)])
+		});
+		await env.COMPLETIONIST_KV.put(key, 'sent', { expirationTtl: 30 * 86_400 });
+	}
+}
+
+function uniqueIds(ids: string[]) {
+	return [...new Set(ids.filter(Boolean))];
+}
+
+function reminderHtml(taskName: string, message: string) {
+	return `<article style="font-family:system-ui,sans-serif;line-height:1.5;color:#0f172a"><p style="font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#64748b">Completionist</p><h2>${escapeHtml(taskName)}</h2><p>${escapeHtml(message)}</p></article>`;
 }
 
 async function handleWebsocketMessage(batch: MessageBatch, env: Env, _ctx: ExecutionContext) {

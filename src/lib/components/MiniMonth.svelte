@@ -8,9 +8,9 @@
 		buildMonthGrid,
 		isSameDay,
 		addMonths,
-		toKey
-	} from '$lib/calendar';
-	import type { CalendarEvent } from '$lib/mock/data';
+		toDateKey as toKey
+	} from '$lib/features/calendar/date';
+	import type { CalendarEvent } from '$lib/features/tasks/types';
 
 	let {
 		events,
@@ -119,6 +119,7 @@
 							class="mark line"
 							class:start={!mark.continuesPrev}
 							class:end={!mark.continuesNext}
+							class:middle={mark.continuesPrev && mark.continuesNext}
 							style:background={mark.color}
 						></span>
 					{:else if mark.single}
@@ -193,11 +194,16 @@
 	}
 	.mark.line {
 		position: absolute;
-		left: -1px;
-		right: -1px;
+		left: 0;
+		right: 0;
 		top: 20px;
 		height: 3px;
 		border-radius: 0;
+	}
+	.mark.line.middle {
+		left: 0;
+		right: 0;
+		width: 100%;
 	}
 	.mark.line.start {
 		left: 50%;

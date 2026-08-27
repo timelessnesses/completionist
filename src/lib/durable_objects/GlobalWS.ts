@@ -60,8 +60,12 @@ export class GlobalWS extends DurableObject {
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 		if (url.pathname.endsWith('/broadcast') && request.method === 'POST') {
-			await request.text().catch(() => '');
-			this.broadcastShouldRefetch();
+			const text = await request.text().catch(() => '');
+			try {
+				this.broadcastJSON(JSON.parse(text));
+			} catch {
+				this.broadcastShouldRefetch();
+			}
 			return new Response('ok', { status: 200 });
 		}
 		if (url.pathname.endsWith('/direct-message') && request.method === 'POST') {
@@ -168,7 +172,8 @@ export class GlobalWS extends DurableObject {
 		}
 
 		if (data.type === 'preview_subscribe') {
-			ws.serializeAttachment({ preview: true });
+			const session = (ws.deserializeAttachment() as ClientSession | null) ?? {};
+			ws.serializeAttachment({ ...session, preview: true });
 			ws.send(JSON.stringify({ type: 'preview_subscribed' }));
 		} else if (data.type === 'online_users') {
 			await this.sendCurrentPeople(ws);

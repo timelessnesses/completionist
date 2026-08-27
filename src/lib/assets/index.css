@@ -88,6 +88,280 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
+/* Shared task dialog primitives. Component files only define their layout variants. */
+.task-dialog-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	border: 0;
+	padding: 0;
+	background: rgb(15 23 42 / 35%);
+}
+
+.task-dialog {
+	position: fixed;
+	z-index: 61;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	overflow-y: auto;
+	background: var(--color-background);
+	border-radius: 16px;
+	box-shadow: 0 8px 30px rgb(0 0 0 / 25%);
+}
+
+.task-dialog .head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.task-dialog h2 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 500;
+}
+
+.task-dialog .icon {
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border: 0;
+	border-radius: 50%;
+	background: none;
+	cursor: pointer;
+}
+
+.task-dialog .icon:hover {
+	background: var(--color-foreground);
+	color: var(--color-background);
+}
+.task-dialog .body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 8px;
+}
+.task-dialog .field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+.task-dialog .field input,
+.task-dialog .field textarea {
+	width: 100%;
+	padding: 9px 12px;
+	border: 1px solid var(--color-border);
+	border-radius: 8px;
+	background: var(--color-background);
+	color: var(--color-foreground);
+	font: inherit;
+	font-size: 13.5px;
+}
+.task-dialog .field textarea {
+	resize: vertical;
+}
+.task-dialog .title-input {
+	width: 100%;
+	padding: 8px 2px;
+	border: 0;
+	border-bottom: 1px solid var(--color-border);
+	border-radius: 0;
+	background: var(--color-background);
+	color: var(--color-foreground);
+	font: inherit;
+	font-size: 18px;
+}
+.task-dialog .title-input:focus {
+	outline: none;
+	border-bottom-width: 2px;
+	border-bottom-color: var(--color-primary);
+}
+.task-dialog .lbl {
+	font-size: 12px;
+}
+.task-dialog .grid2 {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 12px;
+}
+.task-dialog .row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 13.5px;
+}
+.task-dialog .swatches,
+.task-dialog .selected-tags,
+.task-dialog .suggestions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.task-dialog .color-row {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.task-dialog .picker {
+	width: 52px;
+	height: 36px;
+	padding: 3px;
+	border: 1px solid var(--color-border);
+	border-radius: 10px;
+	background: transparent;
+}
+.task-dialog .swatch {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 2px solid transparent;
+	border-radius: 50%;
+	cursor: pointer;
+}
+.task-dialog .swatch.selected {
+	border-color: var(--color-foreground);
+}
+.task-dialog .tag-input-wrap {
+	display: flex;
+	gap: 8px;
+}
+.task-dialog .tag-input {
+	flex: 1;
+	padding: 9px 12px;
+	border: 1px solid var(--color-border);
+	border-radius: 8px;
+	background: var(--color-background);
+	color: var(--color-foreground);
+}
+.task-dialog .tag-chip,
+.task-dialog .suggestion {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border: 1px solid var(--color-border);
+	border-radius: 999px;
+	background: var(--color-background);
+	color: var(--color-foreground);
+	font-size: 12px;
+}
+.task-dialog .err {
+	margin: 0;
+	color: var(--color-danger);
+	font-size: 12.5px;
+}
+.task-dialog .foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 4px;
+}
+.task-dialog .btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 9px 16px;
+	border: 0;
+	border-radius: 999px;
+	cursor: pointer;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 600;
+}
+.task-dialog .btn:disabled {
+	opacity: 0.6;
+	cursor: default;
+}
+.task-dialog .btn.ghost {
+	background: none;
+	color: var(--color-primary);
+}
+.task-dialog .btn.ghost:hover {
+	background: var(--color-muted);
+}
+.task-dialog .btn.primary {
+	background: var(--color-primary);
+	color: var(--color-primary-foreground);
+}
+.task-dialog .btn.danger {
+	background: var(--color-danger-muted);
+	color: var(--color-danger);
+}
+.task-dialog .thread {
+	overflow: hidden;
+	border: 1px solid var(--color-border);
+	border-radius: 16px;
+	background: var(--color-muted);
+}
+.task-dialog .thread summary {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px 14px;
+	cursor: pointer;
+	list-style: none;
+}
+.task-dialog .thread summary::-webkit-details-marker {
+	display: none;
+}
+.task-dialog .thread-count {
+	min-width: 1.75rem;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--color-background);
+	color: var(--color-foreground);
+	font-size: 12px;
+	text-align: center;
+}
+.task-dialog .thread-body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 0 14px 14px;
+}
+.task-dialog .thread-empty {
+	margin: 0;
+	color: var(--color-muted-foreground);
+	font-size: 13px;
+}
+.task-dialog .comment-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.task-dialog .thread-item {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 10px 12px;
+	border: 1px solid var(--color-border);
+	border-radius: 12px;
+	background: var(--color-background);
+}
+.task-dialog .thread-item.attachment {
+	border-style: dashed;
+}
+.task-dialog .comment-head {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 10px;
+	color: var(--color-muted-foreground);
+	font-size: 12px;
+}
+.task-dialog .thread-item p {
+	margin: 0;
+	white-space: pre-wrap;
+}
+.task-dialog .attachment-row {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
 /* FullCalendar theming overrides */
 .fc {
 	--fc-border-color: var(--color-border);

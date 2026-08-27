@@ -18,12 +18,17 @@
 		mdiMessageTextOutline
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
-	import type { Person } from '$lib/mock/data';
+	import type { Person } from '$lib/features/tasks/types';
 	import { getWS } from '$lib/websocket.svelte';
 	import { onMount } from 'svelte';
 	import { Capacitor, registerPlugin } from '@capacitor/core';
 	import { LocalNotifications } from '@capacitor/local-notifications';
-	import { registerServiceWorker, requestForNotificationPermission, unregisterPushNotifications, unregisterServiceWorker } from '$lib/notificationStuff';
+	import {
+		registerServiceWorker,
+		requestForNotificationPermission,
+		unregisterPushNotifications,
+		unregisterServiceWorker
+	} from '$lib/notificationStuff';
 
 	let { isOwner = false, viewerId = null }: { isOwner?: boolean; viewerId?: string | null } =
 		$props();
@@ -296,6 +301,50 @@
 		return `${(size / 1024 / 1024).toFixed(1)} MB`;
 	}
 
+	async function showIncomingMessageNotification(message: DirectMessage) {
+		if (message.from_user_id === viewerId) return;
+		const sender =
+			message.from_user?.name ??
+			people.find((p) => p.id === message.from_user_id)?.name ??
+			'Someone';
+		const body =
+			message.message?.trim() ||
+			(message.attachments.length ? 'Sent you an attachment' : 'New direct message');
+		if (Capacitor.isNativePlatform()) {
+			const permission = await LocalNotifications.checkPermissions();
+			if (permission.display !== 'granted') return;
+			await LocalNotifications.schedule({
+				notifications: [
+					{
+						id: Math.abs(hashNotificationId(message.id)),
+						title: `New message from ${sender}`,
+						body,
+						schedule: { at: new Date(Date.now() + 100) },
+						extra: {
+							type: 'direct_message',
+							message_id: message.id,
+							from_user_id: message.from_user_id
+						}
+					}
+				]
+			});
+			return;
+		}
+		if ('Notification' in window && Notification.permission === 'granted') {
+			new Notification(`New message from ${sender}`, {
+				body,
+				tag: `direct-message-${message.id}`,
+				icon: message.from_user?.profile_picture_url ?? '/favicon.svg'
+			});
+		}
+	}
+
+	function hashNotificationId(value: string): number {
+		let hash = 0;
+		for (let i = 0; i < value.length; i++) hash = (hash * 31 + value.charCodeAt(i)) | 0;
+		return hash || 1;
+	}
+
 	onMount(() => {
 		let ws: WebSocket | undefined;
 		let disposed = false;
@@ -314,7 +363,9 @@
 			} else if (data.type === 'user_disconnected' && data.user_id) {
 				people = people.map((p) => (p.id === data.user_id ? { ...p, status: 'Offline' } : p));
 			} else if (data.type === 'direct_message' && data.message) {
-				upsertMessage(data.message as DirectMessage);
+				const message = data.message as DirectMessage;
+				upsertMessage(message);
+				void showIncomingMessageNotification(message);
 			}
 		};
 
@@ -602,26 +653,29 @@
 				</a>
 			{/if}
 
-			<button class="setting-action" onclick={async () => {
-				if (await notificationPermission()) {
-					if (isNativePlatform()) {
-						await LocalNotifications.cancelAll();
-						notificationEnabled = false;
-						await unregisterPushNotifications();
+			<button
+				class="setting-action"
+				onclick={async () => {
+					if (await notificationPermission()) {
+						if (isNativePlatform()) {
+							await LocalNotifications.cancelAll();
+							notificationEnabled = false;
+							await unregisterPushNotifications();
+						} else {
+							const sw = await navigator.serviceWorker.ready;
+							await unregisterServiceWorker();
+						}
 					} else {
-						const sw = await navigator.serviceWorker.ready;
-						await unregisterServiceWorker();
+						if (isNativePlatform()) {
+							await requestForNotificationPermission();
+							notificationEnabled = await notificationPermission();
+						} else {
+							await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
+							notificationEnabled = await notificationPermission();
+						}
 					}
-				} else {
-					if (isNativePlatform()) {
-						await requestForNotificationPermission();
-						notificationEnabled = await notificationPermission();
-					} else {
-						await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
-						notificationEnabled = await notificationPermission();
-					}
-				}
-			}}>
+				}}
+			>
 				<span class="setting-ic"><MdiIcon path={mdiMessageTextOutline} size={20} /></span>
 				<span class="setting-text">
 					<span class="setting-title"

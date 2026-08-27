@@ -1,26 +1,36 @@
 <script lang="ts">
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
 	import WeekView from '$lib/components/WeekView.svelte';
-	import { mdiCalendarMonth } from '@mdi/js';
+	import { mdiCalendarMonth, mdiCloudSyncOutline } from '@mdi/js';
 	import {
 		WEEKDAYS,
 		MONTHS,
 		buildMonthGrid,
 		isSameDay,
 		addMonths,
-		toKey,
+		toDateKey as toKey,
 		prettyDate
-	} from '$lib/calendar';
+	} from '$lib/features/calendar/date';
 	import type { PageProps } from './$types';
-	import type { CalendarEvent } from '$lib/mock/data';
+	import type { CalendarEvent } from '$lib/features/tasks/types';
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { fly, scale } from 'svelte/transition';
 
 	const { data }: PageProps = $props();
 	let events = $state<CalendarEvent[]>(data.event);
 	let viewDate = $state(new Date());
 	let live = $state(false);
-	let nowMs = $state(Date.now());
+	let clockOffsetMs = $state(data.workerTime - Date.now());
+	let nowMs = $state(Date.now() + clockOffsetMs);
+	let clockSynced = $state(false);
+	let clockSyncing = $state(false);
+	let clockLatencyMs = $state<number | null>(null);
+	let workerEdge = $state(data.workerEdge);
+
+	$effect(() => {
+		events = data.event;
+	});
 
 	const cells = $derived(buildMonthGrid(viewDate.getFullYear(), viewDate.getMonth()));
 	const eventsByDay = $derived.by(() => {
@@ -58,11 +68,42 @@
 		const threshold = activeEvent ? +new Date(activeEvent.end_at) : nowMs;
 		return sortedByStart.filter((ev) => +new Date(ev.start_at) > threshold).slice(0, 4);
 	});
+	const workerClockTime = $derived(formatWorkerTime(nowMs));
+	const workerClockDate = $derived(formatWorkerDate(nowMs));
+
+	async function syncWorkerClock() {
+		if (clockSyncing) return;
+		clockSyncing = true;
+		const startedWall = Date.now();
+		const startedPerformance = performance.now();
+		try {
+			const response = await fetch(`/preview/time?nonce=${startedWall}`, { cache: 'no-store' });
+			if (!response.ok) throw new Error(`Clock sync failed (${response.status})`);
+			const result = (await response.json()) as { workerTime: number; edge: string };
+			const roundTrip = performance.now() - startedPerformance;
+			const receivedWall = Date.now();
+			// Estimate the current Worker time at the midpoint of the network round trip.
+			clockOffsetMs = result.workerTime + roundTrip / 2 - receivedWall;
+			clockLatencyMs = Math.round(roundTrip);
+			workerEdge = result.edge;
+			clockSynced = true;
+		} catch {
+			clockSynced = false;
+		} finally {
+			clockSyncing = false;
+		}
+	}
 
 	onMount(() => {
 		const tick = setInterval(() => {
-			nowMs = Date.now();
+			nowMs = Date.now() + clockOffsetMs;
 		}, 50);
+		const clockResync = setInterval(() => void syncWorkerClock(), 15_000);
+		const onVisibilityChange = () => {
+			if (document.visibilityState === 'visible') void syncWorkerClock();
+		};
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		void syncWorkerClock();
 
 		const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
 		const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`);
@@ -86,9 +127,30 @@
 
 		return () => {
 			clearInterval(tick);
+			clearInterval(clockResync);
+			document.removeEventListener('visibilitychange', onVisibilityChange);
 			ws.close();
 		};
 	});
+
+	function formatWorkerTime(timestamp: number): string {
+		return new Intl.DateTimeFormat('en-GB', {
+			timeZone: 'Asia/Bangkok',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: false
+		}).format(timestamp);
+	}
+
+	function formatWorkerDate(timestamp: number): string {
+		return new Intl.DateTimeFormat('en-GB', {
+			timeZone: 'Asia/Bangkok',
+			weekday: 'short',
+			day: '2-digit',
+			month: 'short'
+		}).format(timestamp);
+	}
 
 	function hex(ev: CalendarEvent): string {
 		const c = ev.color;
@@ -135,6 +197,21 @@
 		<h1>Calendar preview</h1>
 		<span class="live" class:on={live}>{live ? 'Live' : 'Offline'}</span>
 		<span class="spacer"></span>
+		<div
+			class="worker-clock"
+			class:synced={clockSynced}
+			title={clockSynced
+				? `Synced to Cloudflare ${workerEdge} · ${clockLatencyMs ?? 0}ms round trip`
+				: 'Synchronizing with Cloudflare Worker'}
+			aria-live="polite"
+		>
+			<span class="clock-icon"><MdiIcon path={mdiCloudSyncOutline} size={16} /></span>
+			<span class="clock-copy">
+				<strong>{workerClockTime}</strong>
+				<small>{workerClockDate} · GMT+7</small>
+			</span>
+			<span class="sync-dot" aria-hidden="true"></span>
+		</div>
 		<button class="nav" aria-label="Previous" onclick={() => (viewDate = addMonths(viewDate, -1))}
 			>‹</button
 		>
@@ -153,9 +230,13 @@
 				{#each WEEKDAYS as d}
 					<div class="dow">{d}</div>
 				{/each}
-				{#each cells as cell (cell.key)}
+				{#each cells as cell, index (cell.key)}
 					{@const dayEvents = eventsByDay.get(cell.key) ?? []}
-					<div class="cell" class:dim={!cell.inMonth}>
+					<div
+						class="cell"
+						class:dim={!cell.inMonth}
+						style:animation-delay={`${Math.min(index, 13) * 18}ms`}
+					>
 						<span class="daynum" class:today={isSameDay(cell.date, new Date())}>
 							{cell.date.getDate()}
 						</span>
@@ -185,8 +266,8 @@
 	</div>
 
 	{#if isCountdownState && nextEvent}
-		<div class="countdown-overlay" aria-live="polite">
-			<div class="countdown-card">
+		<div class="countdown-overlay" aria-live="polite" transition:fly={{ y: 12, duration: 260 }}>
+			<div class="countdown-card" transition:scale={{ start: 0.96, duration: 260 }}>
 				<div class="eyebrow">Starting Soon</div>
 				<h3>{nextEvent.task_name}</h3>
 				<div class="timer">{countdownWithMs(msUntilNext)}</div>
@@ -196,8 +277,8 @@
 	{/if}
 
 	{#if activeEvent}
-		<div class="active-overlay" aria-live="polite">
-			<div class="active-card">
+		<div class="active-overlay" aria-live="polite" transition:fly={{ y: 18, duration: 320 }}>
+			<div class="active-card" transition:scale={{ start: 0.94, duration: 320 }}>
 				<div class="eyebrow">Active Event</div>
 				<h3>{activeEvent.task_name}</h3>
 				<div class="left">Time left {durationLeft(+new Date(activeEvent.end_at) - nowMs)}</div>
@@ -277,6 +358,70 @@
 	.spacer {
 		flex: 1;
 	}
+	.worker-clock {
+		display: grid;
+		grid-template-columns: 28px auto 6px;
+		align-items: center;
+		gap: 8px;
+		min-width: 162px;
+		padding: 5px 11px 5px 7px;
+		border: 1px solid #c4c7c5;
+		border-radius: 999px;
+		background: #fff;
+		color: #1f1f1f;
+		font-variant-numeric: tabular-nums;
+		transition:
+			background 160ms ease,
+			border-color 160ms ease;
+	}
+	.worker-clock:hover {
+		background: #f8fafd;
+	}
+	.worker-clock.synced {
+		border-color: #a8c7fa;
+	}
+	.clock-icon {
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		color: #0b57d0;
+		background: #e8f0fe;
+	}
+	.clock-copy {
+		display: grid;
+		line-height: 1.05;
+	}
+	.clock-copy strong {
+		font-family: 'Google Sans', Roboto, 'Segoe UI', sans-serif;
+		font-size: 14px;
+		font-weight: 500;
+		letter-spacing: 0.01em;
+	}
+	.clock-copy small {
+		margin-top: 3px;
+		color: #5f6368;
+		font-size: 8.5px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.sync-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: #b0b7b4;
+		animation: sync-pulse 1.2s ease-in-out infinite;
+	}
+	.worker-clock.synced .clock-icon {
+		color: #0b57d0;
+	}
+	.worker-clock.synced .sync-dot {
+		background: #20a052;
+		animation: none;
+		box-shadow: 0 0 0 3px rgba(32, 160, 82, 0.12);
+	}
 	.nav {
 		border: 0;
 		background: none;
@@ -353,6 +498,7 @@
 		border-top: 1px solid #e1e3e1;
 		padding: 4px 6px;
 		overflow: hidden;
+		animation: cell-enter 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 	}
 	.cell:nth-child(7n + 8) {
 		border-left: 0;
@@ -509,10 +655,48 @@
 		font-size: 12px;
 		color: #5f6368;
 	}
+	@keyframes cell-enter {
+		from {
+			opacity: 0;
+			transform: translateY(6px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+	@keyframes sync-pulse {
+		50% {
+			opacity: 0.35;
+			transform: scale(0.75);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.cell {
+			animation: none;
+		}
+		.wrap {
+			transition: none;
+		}
+	}
 
 	@media (max-width: 1180px) {
 		.cal-layout {
 			grid-template-columns: 1fr;
+		}
+	}
+	@media (max-width: 720px) {
+		.clock-icon,
+		.clock-copy small {
+			display: none;
+		}
+		.worker-clock {
+			min-width: auto;
+			grid-template-columns: auto 6px;
+			padding: 7px 10px;
+		}
+		.clock-copy strong {
+			font-size: 13px;
 		}
 	}
 </style>

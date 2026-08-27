@@ -19,9 +19,9 @@
 		isSameDay,
 		addMonths,
 		addDays,
-		toKey
-	} from '$lib/calendar';
-	import type { RichTask, FilterTag, UserSummary } from '$lib/mock/data';
+		toDateKey as toKey
+	} from '$lib/features/calendar/date';
+	import type { RichTask, FilterTag, UserSummary } from '$lib/features/tasks/types';
 
 	type View = 'Month' | 'Week';
 

@@ -2,6 +2,8 @@
 	import '$lib/assets/index.css';
 	import { onMount } from 'svelte';
 	import { connectWS } from '$lib/websocket.svelte';
+	import ApiFeedback from '$lib/components/ApiFeedback.svelte';
+	import { installApiFeedback } from '$lib/api-feedback';
 
 	const builtAt = new Date(__BUILD_DATE).toLocaleString('en-TH', {
 		dateStyle: 'medium',
@@ -13,6 +15,7 @@
 	let server_timing_number: number | null = $state(null);
 	let latency: number | null = $state(null);
 	onMount(() => {
+		const uninstallApiFeedback = installApiFeedback();
 		const server_timing = document.querySelector('div[data-server-timing]');
 		if (server_timing) {
 			// @ts-expect-error - dataset is there
@@ -50,6 +53,7 @@
 			});
 
 		return () => {
+			uninstallApiFeedback();
 			disposed = true;
 			if (interval) clearInterval(interval);
 			ws?.removeEventListener('message', onMessage);
@@ -93,3 +97,5 @@
 		</div>
 	</footer>
 </div>
+
+<ApiFeedback />

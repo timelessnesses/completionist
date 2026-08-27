@@ -72,27 +72,6 @@ export const DELETE = async ({ request, platform, locals }) => {
 		throw svelteError(401, 'Unauthorized');
 	}
 
-	let body: WebPushBody;
-	try {
-		body = await request.json();
-	} catch {
-		throw svelteError(400, 'Invalid JSON');
-	}
-
-	const endpoint = body.endpoint?.trim();
-	if (!endpoint) {
-		throw svelteError(400, 'endpoint is required');
-	}
-
-	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
-	await db
-		.delete(push_subscriptions)
-		.where(
-			and(
-				eq(push_subscriptions.user_id, locals.user.user_id),
-				eq(push_subscriptions.endpoint, endpoint)
-			)
-		);
-
-	return json({ ok: true });
+	await (getDb((platform?.env as Env).COMPLETIONIST_DB).delete(push_subscriptions).where(eq(push_subscriptions.user_id, locals.user.user_id)));
+	return json({ ok: true }, { status: 200 });
 };

@@ -1,6 +1,6 @@
 import { getDb } from '$lib/server/db/index.js';
 import { task, task_comment } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
 import { buildTaskNotificationEnvelope } from '$lib/server/task-fanout';
 
@@ -10,8 +10,8 @@ type CreateCommentBody = {
 };
 
 async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) {
-	return db.query.task.findMany({
-		where: eq(task.id, id),
+	const rows = await db.query.task.findMany({
+		where: and(eq(task.id, id), isNull(task.deleted_at)),
 		with: {
 			parentTask: true,
 			subtasks: true,
@@ -47,6 +47,12 @@ async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) 
 			}
 		}
 	});
+	return rows.map((item) => ({
+		...item,
+		subtasks: item.subtasks.filter((subtask) => !subtask.deleted_at),
+		dependencies: item.dependencies.filter((link) => !link.dependency?.deleted_at),
+		dependents: item.dependents.filter((link) => !link.task?.deleted_at)
+	}));
 }
 
 export const POST = async ({ request, platform, locals }) => {
@@ -72,7 +78,9 @@ export const POST = async ({ request, platform, locals }) => {
 	}
 
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
-	const existing = await db.query.task.findFirst({ where: eq(task.id, body.task_id) });
+	const existing = await db.query.task.findFirst({
+		where: and(eq(task.id, body.task_id), isNull(task.deleted_at))
+	});
 	if (!existing) {
 		throw svelteError(404, 'Task not found');
 	}

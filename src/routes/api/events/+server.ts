@@ -4,9 +4,10 @@ import {
 	task_assignee,
 	task_assigned_tags,
 	task_dependency,
-	task_tag
+	task_tag,
+	user as userTable
 } from '$lib/server/db/schema.js';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
 import type { Color } from '$lib/server/db/schema.js';
 import { buildTaskNotificationEnvelope } from '$lib/server/task-fanout';
@@ -21,6 +22,7 @@ type CreateBody = {
 	status?: 'todo' | 'progress' | 'completed' | 'cancelled';
 	importance_value?: number;
 	completed?: number | null;
+	owner_id?: string;
 	assignee_ids?: string[];
 	dependency_ids?: string[];
 	tags?: Array<{
@@ -53,13 +55,20 @@ export const POST = async ({ request, platform, locals }) => {
 	}
 
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
+	const ownerId = body.owner_id?.trim() || user.user_id;
+	if (ownerId !== user.user_id && !user.admin) {
+		throw svelteError(403, 'Only administrators can create events for another owner');
+	}
+	await assertUserExists(db, ownerId);
+	const dependencyIds = normalizeDependencyIds(body.dependency_ids);
+	await assertDependencyTargetsExist(db, dependencyIds);
 	const inserted = await db
 		.insert(task)
 		.values({
 			task_name: body.task_name.trim(),
 			description: body.description ?? null,
 			color: body.color,
-			owner: user.user_id,
+			owner: ownerId,
 			start_at: new Date(body.start_at),
 			end_at: new Date(body.end_at),
 			all_day: body.all_day ? 1 : 0,
@@ -83,13 +92,8 @@ export const POST = async ({ request, platform, locals }) => {
 		);
 	}
 
-	if (body.dependency_ids?.length) {
-		await db.insert(task_dependency).values(
-			body.dependency_ids.map((dependencyId) => ({
-				task_id: created.id,
-				dependency_id: dependencyId
-			}))
-		);
+	if (dependencyIds.length) {
+		await insertDependencyLinks(db, created.id, dependencyIds);
 	}
 
 	if (body.tags?.length) {
@@ -160,7 +164,9 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	}
 
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
-	const existing = await db.query.task.findFirst({ where: eq(task.id, id) });
+	const existing = await db.query.task.findFirst({
+		where: and(eq(task.id, id), isNull(task.deleted_at))
+	});
 	if (!existing) {
 		throw svelteError(404, 'Event not found');
 	}
@@ -168,6 +174,11 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	const canEdit = user.admin || existing.owner === user.user_id;
 	if (!canEdit) {
 		throw svelteError(403, 'Forbidden');
+	}
+	const dependencyIds =
+		body.dependency_ids === undefined ? undefined : normalizeDependencyIds(body.dependency_ids);
+	if (dependencyIds !== undefined) {
+		await assertAcyclicDependencyChange(db, id, dependencyIds);
 	}
 
 	const nextStart = typeof body.start_at === 'number' ? new Date(body.start_at) : existing.start_at;
@@ -187,12 +198,22 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	if (typeof body.importance_value === 'number') updates.importance_value = body.importance_value;
 	if (body.completed !== undefined)
 		updates.completed = body.completed ? new Date(body.completed) : null;
+	if (body.owner_id !== undefined) {
+		if (!user.admin) throw svelteError(403, 'Only administrators can change the owner');
+		const ownerId = body.owner_id.trim();
+		await assertUserExists(db, ownerId);
+		updates.owner = ownerId;
+	}
 
-	if (Object.keys(updates).length === 0) {
+	const hasRelationUpdates =
+		body.assignee_ids !== undefined || dependencyIds !== undefined || body.tags !== undefined;
+	if (Object.keys(updates).length === 0 && !hasRelationUpdates) {
 		return json(existing, { status: 200 });
 	}
 
-	await db.update(task).set(updates).where(eq(task.id, id));
+	if (Object.keys(updates).length > 0) {
+		await db.update(task).set(updates).where(eq(task.id, id));
+	}
 
 	if (body.assignee_ids !== undefined) {
 		await db.delete(task_assignee).where(eq(task_assignee.task_id, id));
@@ -206,16 +227,8 @@ export const PUT = async ({ request, platform, locals, url }) => {
 		}
 	}
 
-	if (body.dependency_ids !== undefined) {
-		await db.delete(task_dependency).where(eq(task_dependency.task_id, id));
-		if (body.dependency_ids.length) {
-			await db.insert(task_dependency).values(
-				body.dependency_ids.map((dependencyId) => ({
-					task_id: id,
-					dependency_id: dependencyId
-				}))
-			);
-		}
+	if (dependencyIds !== undefined) {
+		await replaceDependencyLinks(db, id, dependencyIds);
 	}
 
 	if (body.tags !== undefined) {
@@ -272,9 +285,139 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	return json(updated, { status: 200 });
 };
 
+function normalizeDependencyIds(value: unknown): string[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.some((id) => typeof id !== 'string')) {
+		throw svelteError(400, 'dependency_ids must be an array of task IDs');
+	}
+	return [...new Set(value.map((id) => id.trim()).filter(Boolean))];
+}
+
+async function insertDependencyLinks(
+	db: ReturnType<typeof getDb>,
+	taskId: string,
+	dependencyIds: string[]
+) {
+	try {
+		await db
+			.insert(task_dependency)
+			.values(
+				dependencyIds.map((dependencyId) => ({ task_id: taskId, dependency_id: dependencyId }))
+			);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (message.toLowerCase().includes('circular dependency')) {
+			throw svelteError(409, 'Circular dependency rejected');
+		}
+		throw error;
+	}
+}
+
+async function replaceDependencyLinks(
+	db: ReturnType<typeof getDb>,
+	taskId: string,
+	dependencyIds: string[]
+) {
+	const removeExisting = db.delete(task_dependency).where(eq(task_dependency.task_id, taskId));
+	try {
+		if (dependencyIds.length === 0) {
+			await removeExisting;
+			return;
+		}
+		const addProposed = db
+			.insert(task_dependency)
+			.values(
+				dependencyIds.map((dependencyId) => ({ task_id: taskId, dependency_id: dependencyId }))
+			);
+		// D1 batches are transactional: a trigger rejection also rolls back the delete.
+		await db.batch([removeExisting, addProposed]);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		if (message.toLowerCase().includes('circular dependency')) {
+			throw svelteError(409, 'Circular dependency rejected');
+		}
+		throw error;
+	}
+}
+
+async function assertDependencyTargetsExist(db: ReturnType<typeof getDb>, dependencyIds: string[]) {
+	if (dependencyIds.length === 0) return;
+	const found = await db
+		.select({ id: task.id })
+		.from(task)
+		.where(and(inArray(task.id, dependencyIds), isNull(task.deleted_at)));
+	const foundIds = new Set(found.map((row) => row.id));
+	const missing = dependencyIds.filter((id) => !foundIds.has(id));
+	if (missing.length) {
+		throw svelteError(
+			400,
+			`Unknown dependency task${missing.length === 1 ? '' : 's'}: ${missing.join(', ')}`
+		);
+	}
+}
+
+async function assertUserExists(db: ReturnType<typeof getDb>, userId: string) {
+	if (!userId) throw svelteError(400, 'owner_id is required');
+	const found = await db.query.user.findFirst({
+		where: eq(userTable.id, userId),
+		columns: { id: true }
+	});
+	if (!found) throw svelteError(400, 'Unknown event owner');
+}
+
+async function assertAcyclicDependencyChange(
+	db: ReturnType<typeof getDb>,
+	taskId: string,
+	dependencyIds: string[]
+) {
+	if (dependencyIds.includes(taskId)) {
+		throw svelteError(409, 'A task cannot depend on itself');
+	}
+	await assertDependencyTargetsExist(db, dependencyIds);
+
+	const edges = await db
+		.select({ taskId: task_dependency.task_id, dependencyId: task_dependency.dependency_id })
+		.from(task_dependency);
+	const graph = new Map<string, Set<string>>();
+	for (const edge of edges) {
+		// The request replaces this task's complete dependency set.
+		if (edge.taskId === taskId) continue;
+		const outgoing = graph.get(edge.taskId) ?? new Set<string>();
+		outgoing.add(edge.dependencyId);
+		graph.set(edge.taskId, outgoing);
+	}
+	graph.set(taskId, new Set(dependencyIds));
+
+	for (const dependencyId of dependencyIds) {
+		const pathBack = findDependencyPath(graph, dependencyId, taskId);
+		if (pathBack) {
+			throw svelteError(409, `Circular dependency rejected: ${[taskId, ...pathBack].join(' -> ')}`);
+		}
+	}
+}
+
+function findDependencyPath(
+	graph: Map<string, Set<string>>,
+	startId: string,
+	targetId: string
+): string[] | null {
+	const queue: Array<{ id: string; path: string[] }> = [{ id: startId, path: [startId] }];
+	const visited = new Set<string>();
+	while (queue.length) {
+		const current = queue.shift()!;
+		if (current.id === targetId) return current.path;
+		if (visited.has(current.id)) continue;
+		visited.add(current.id);
+		for (const nextId of graph.get(current.id) ?? []) {
+			if (!visited.has(nextId)) queue.push({ id: nextId, path: [...current.path, nextId] });
+		}
+	}
+	return null;
+}
+
 async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) {
-	return db.query.task.findMany({
-		where: eq(task.id, id),
+	const rows = await db.query.task.findMany({
+		where: and(eq(task.id, id), isNull(task.deleted_at)),
 		with: {
 			parentTask: true,
 			subtasks: true,
@@ -310,6 +453,12 @@ async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) 
 			}
 		}
 	});
+	return rows.map((item) => ({
+		...item,
+		subtasks: item.subtasks.filter((subtask) => !subtask.deleted_at),
+		dependencies: item.dependencies.filter((link) => !link.dependency?.deleted_at),
+		dependents: item.dependents.filter((link) => !link.task?.deleted_at)
+	}));
 }
 
 export const DELETE = async ({ platform, locals, url }) => {
@@ -324,7 +473,9 @@ export const DELETE = async ({ platform, locals, url }) => {
 	}
 
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
-	const existing = await db.query.task.findFirst({ where: eq(task.id, id) });
+	const existing = await db.query.task.findFirst({
+		where: and(eq(task.id, id), isNull(task.deleted_at))
+	});
 	if (!existing) {
 		throw svelteError(404, 'Event not found');
 	}
@@ -334,7 +485,8 @@ export const DELETE = async ({ platform, locals, url }) => {
 		throw svelteError(403, 'Forbidden');
 	}
 
-	await db.delete(task).where(eq(task.id, id));
+	const deletedAt = new Date();
+	await db.update(task).set({ deleted_at: deletedAt }).where(eq(task.id, id));
 
 	try {
 		const stub = (platform?.env as Env).GlobalWS.getByName('global_ws');
@@ -347,5 +499,37 @@ export const DELETE = async ({ platform, locals, url }) => {
 		/* best effort */
 	}
 
-	return json({ ok: true, id });
+	return json({ ok: true, id, deleted_at: +deletedAt });
+};
+
+export const PATCH = async ({ platform, locals, url }) => {
+	const currentUser = locals.user;
+	if (!currentUser) throw svelteError(401, 'Unauthorized');
+	if (!currentUser.admin) throw svelteError(403, 'Administrator access required');
+
+	const id = url.searchParams.get('id');
+	const action = url.searchParams.get('action');
+	if (!id) throw svelteError(400, 'id is required');
+	if (action !== 'restore') throw svelteError(400, 'Unsupported action');
+
+	const env = platform?.env as Env;
+	const db = getDb(env.COMPLETIONIST_DB);
+	const existing = await db.query.task.findFirst({
+		where: and(eq(task.id, id), isNotNull(task.deleted_at))
+	});
+	if (!existing) throw svelteError(404, 'Deleted event not found');
+
+	await db.update(task).set({ deleted_at: null }).where(eq(task.id, id));
+	const restored = (await fetchTaskWithRelations(db, id))[0];
+	try {
+		const stub = env.GlobalWS.getByName('global_ws');
+		await stub.fetch('https://global-ws.internal/broadcast', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ type: 'shouldRefetch' })
+		});
+	} catch {
+		/* best effort */
+	}
+	return json(restored ?? { ...existing, deleted_at: null });
 };

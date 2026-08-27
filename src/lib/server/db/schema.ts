@@ -81,7 +81,8 @@ export const task = sqliteTable('task', {
 	all_day: integer('all_day').notNull().$type<0 | 1>(),
 	// higher importance_value means higher importance
 	importance_value: integer('importance_value').notNull(),
-	completed: integer('completed', { mode: 'timestamp_ms' })
+	completed: integer('completed', { mode: 'timestamp_ms' }),
+	deleted_at: integer('deleted_at', { mode: 'timestamp_ms' })
 });
 
 export const user = sqliteTable('user', {
