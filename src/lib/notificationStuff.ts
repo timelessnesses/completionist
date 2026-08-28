@@ -27,12 +27,11 @@ export async function unregisterPushNotifications() {
 }
 
 export async function unregisterServiceWorker() {
-	console.log('unregistering service worker...');
+	console.log('unsubscribing from web push...');
 	if ('serviceWorker' in navigator) {
-		const registrations = await navigator.serviceWorker.getRegistrations();
-		for (const registration of registrations) {
-			await registration.unregister();
-		}
+		const registration = await navigator.serviceWorker.getRegistration('/');
+		const subscription = await registration?.pushManager.getSubscription();
+		await subscription?.unsubscribe();
 	}
 	await fetch('/api/webpush', {
 		method: 'DELETE'
@@ -46,8 +45,10 @@ export async function registerServiceWorker(vapidPublicKey: string) {
 		console.log('notification permission:', permission);
 		console.log('service worker supported, registering...');
 		if (!vapidPublicKey) return;
-		const sw = await navigator.serviceWorker.register('/sw.js');
-		const _ = await navigator.serviceWorker.ready;
+		const sw =
+			(await navigator.serviceWorker.getRegistration('/')) ??
+			(await navigator.serviceWorker.register('/sw.js', { scope: '/' }));
+		await navigator.serviceWorker.ready;
 		console.log('service worker registered:', sw);
 		if (permission === 'granted') {
 			console.log('notification permission granted, subscribing to push notifications...');
