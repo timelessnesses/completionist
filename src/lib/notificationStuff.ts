@@ -18,25 +18,25 @@ export async function requestForNotificationPermission() {
 }
 
 export async function unregisterPushNotifications() {
-    console.log('unregistering push notifications...');
-    await PushNotifications.removeAllListeners();
-    await PushNotifications.unregister();
-    await fetch('/api/fcm', {
-        method: 'DELETE'
-    });
+	console.log('unregistering push notifications...');
+	await PushNotifications.removeAllListeners();
+	await PushNotifications.unregister();
+	await fetch('/api/fcm', {
+		method: 'DELETE'
+	});
 }
 
 export async function unregisterServiceWorker() {
-    console.log('unregistering service worker...');
-    if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const registration of registrations) {
-            await registration.unregister();
-        }
-    }
-    await fetch('/api/webpush', {
-        method: 'DELETE'
-    });
+	console.log('unregistering service worker...');
+	if ('serviceWorker' in navigator) {
+		const registrations = await navigator.serviceWorker.getRegistrations();
+		for (const registration of registrations) {
+			await registration.unregister();
+		}
+	}
+	await fetch('/api/webpush', {
+		method: 'DELETE'
+	});
 }
 
 export async function registerServiceWorker(vapidPublicKey: string) {

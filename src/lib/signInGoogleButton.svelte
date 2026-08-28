@@ -5,38 +5,46 @@
 	import { GoogleSignIn } from '@capawesome/capacitor-google-sign-in';
 	import yes from '$lib/yes.svg';
 
-	async function trySignIn() {
-		console.log('Signing in from native');
-		const result = await GoogleSignIn.signIn();
-		console.log('Result from native sign in', result);
-		fetch('/api/auth/google-jwt', {
-			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify({
-				id_token: result.idToken
-			}),
-			credentials: 'include'
-		})
-			.then((r) => {
-				if (!r.ok) throw new Error('Failed to sign in with Google');
-				window.location.href = '/';
-			})
-			.catch((err) => {
-				console.error('Error during Google sign-in:', err);
-				alert('Failed to sign in with Google. Please try again.');
-			});
-	}
 	let ready = $state(false);
+	let signingIn = $state(false);
+
+	async function trySignIn() {
+		if (!ready || signingIn) return;
+
+		signingIn = true;
+		try {
+			const result = await GoogleSignIn.signIn();
+			const response = await fetch('/api/auth/google-jwt', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					id_token: result.idToken
+				}),
+				credentials: 'include'
+			});
+
+			if (!response.ok) throw new Error('Failed to sign in with Google');
+			window.location.href = '/';
+		} catch (err) {
+			console.error('Error during Google sign-in:', err);
+			alert('Failed to sign in with Google. Please try again.');
+		} finally {
+			signingIn = false;
+		}
+	}
+
 	if (Capacitor.isNativePlatform()) {
 		onMount(async () => {
-			await GoogleSignIn.initialize({
-				clientId: env.PUBLIC_GOOGLE_OAUTH_CLIENT_ID as string,
-				scopes: ['email', 'profile']
-			});
-			ready = true;
-			await trySignIn();
+			try {
+				await GoogleSignIn.initialize({
+					clientId: env.PUBLIC_GOOGLE_OAUTH_CLIENT_ID as string
+				});
+				ready = true;
+			} catch (err) {
+				console.error('Failed to initialize Google sign-in:', err);
+			}
 		});
 	} else {
 		function handleLoginRequest(response: { credential: string }) {
@@ -110,9 +118,8 @@
 {:else}
 	{#if Capacitor.isNativePlatform()}
 		<button
-			onclick={async () => {
-				await trySignIn();
-			}}
+			disabled={!ready || signingIn}
+			onclick={trySignIn}
 		>
 			<img src={yes} alt="Google Sign In Button" style:visibility={ready ? 'visible' : 'hidden'} />
 		</button>

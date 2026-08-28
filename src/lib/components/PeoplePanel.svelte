@@ -31,6 +31,7 @@
 	} from '$lib/notificationStuff';
 	import { notificationPath } from '$lib/notification-links';
 	import favicon from '$lib/assets/favicon.svg';
+	import { setIcon } from '$lib/nativePlugin';
 
 	let {
 		isOwner = false,
@@ -86,10 +87,14 @@
 	type Theme = 'system' | 'light' | 'dark';
 	let theme: Theme = $state('system');
 
+	function isDarkTheme(t: Theme) {
+		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+		return t === 'dark' || (t === 'system' && prefersDark);
+	}
+
 	function applyTheme(t: Theme) {
 		const root = document.documentElement;
-		const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-		const dark = t === 'dark' || (t === 'system' && prefersDark);
+		const dark = isDarkTheme(t);
 		root.classList.toggle('dark', dark);
 		const light = document.querySelector<HTMLLinkElement>('link[href="/smui.css"]');
 		const darkSheet = document.querySelector<HTMLLinkElement>('link[href="/smui-dark.css"]');
@@ -101,6 +106,12 @@
 		}
 	}
 
+	function applyNativeIcon(t: Theme) {
+		void setIcon(isDarkTheme(t) ? 'IconDark' : 'IconLight').catch((error) => {
+			console.error('Failed to update the native app icon:', error);
+		});
+	}
+
 	function setTheme(t: Theme) {
 		theme = t;
 		try {
@@ -109,6 +120,7 @@
 			/* ignore */
 		}
 		applyTheme(t);
+		applyNativeIcon(t);
 	}
 
 	onMount(() => {
@@ -120,7 +132,11 @@
 		}
 		setTheme(saved);
 		const mq = window.matchMedia('(prefers-color-scheme: dark)');
-		const onSystem = () => theme === 'system' && applyTheme('system');
+		const onSystem = () => {
+			if (theme !== 'system') return;
+			applyTheme('system');
+			applyNativeIcon('system');
+		};
 		mq.addEventListener('change', onSystem);
 		return () => mq.removeEventListener('change', onSystem);
 	});
@@ -434,7 +450,7 @@
 
 	async function notificationPermission(): Promise<boolean> {
 		if (Capacitor.isNativePlatform()) {
-			const permission = await LocalNotifications.requestPermissions();
+			const permission = await LocalNotifications.checkPermissions();
 			return permission.display === 'granted';
 		} else {
 			return Notification.permission === 'granted';
@@ -641,7 +657,7 @@
 
 {#if settingsOpen}
 	<button class="scrim" aria-label="Close settings" onclick={() => (settingsOpen = false)}></button>
-	<div class="share-dialog" role="dialog" aria-modal="true" aria-label="Settings">
+	<div class="share-dialog settings-dialog" role="dialog" aria-modal="true" aria-label="Settings">
 		<header class="share-head">
 			<h2>Settings</h2>
 			<button class="x" aria-label="Close" onclick={() => (settingsOpen = false)}>
@@ -1242,7 +1258,7 @@
 		.head {
 			padding-right: 36px;
 		}
-		.share-dialog {
+		.share-dialog:not(.settings-dialog) {
 			top: auto;
 			bottom: 0;
 			left: 0;

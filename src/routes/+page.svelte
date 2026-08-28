@@ -706,12 +706,12 @@
 					}
 				);
 				pushReceivedHandle = await PushNotifications.addListener(
-					"pushNotificationReceived",
+					'pushNotificationReceived',
 					async (notification) => {
-						console.log("push notification received:", notification);
+						console.log('push notification received:', notification);
 						await invalidateAll();
 					}
-				)
+				);
 				console.log('requesting notification permission for native platform...');
 				await requestForNotificationPermission();
 			} else {
