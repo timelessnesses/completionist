@@ -86,7 +86,7 @@
 	}
 
 	let { data }: PageProps = $props();
-	let events = $state<RichTask[]>(data.event);
+	let events = $state<RichTask[]>(dedupeEvents(data.event));
 	const upcoming = $derived.by(() =>
 		[...events]
 			.filter(
@@ -218,16 +218,26 @@
 	);
 
 	$effect(() => {
-		events = data.event;
+		events = dedupeEvents(data.event);
 	});
 
+	function dedupeEvents(items: RichTask[]): RichTask[] {
+		return [...new Map(items.map((event) => [event.id, event])).values()];
+	}
+
+	function upsertEvent(items: RichTask[], event: RichTask): RichTask[] {
+		return items.some((item) => item.id === event.id)
+			? items.map((item) => (item.id === event.id ? event : item))
+			: [...items, event];
+	}
+
 	function onCreated(ev: RichTask) {
-		events = [...events, ev];
+		events = upsertEvent(events, ev);
 		selectedTaskId = ev.id;
 	}
 
 	function onUpdated(ev: RichTask) {
-		events = events.map((x) => (x.id === ev.id ? ev : x));
+		events = upsertEvent(events, ev);
 	}
 
 	function onDeleted(id: string) {
@@ -660,6 +670,7 @@
 		let disposed = false;
 		let pushActionHandle: { remove: () => Promise<void> } | null = null;
 		let localActionHandle: { remove: () => Promise<void> } | null = null;
+		let pushReceivedHandle: { remove: () => Promise<void> } | null = null;
 		const clockTimer = window.setInterval(() => {
 			currentTime = Date.now();
 		}, 30_000);
@@ -694,6 +705,13 @@
 						);
 					}
 				);
+				pushReceivedHandle = await PushNotifications.addListener(
+					"pushNotificationReceived",
+					async (notification) => {
+						console.log("push notification received:", notification);
+						await invalidateAll();
+					}
+				)
 				console.log('requesting notification permission for native platform...');
 				await requestForNotificationPermission();
 			} else {

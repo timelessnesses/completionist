@@ -260,8 +260,13 @@ async function handleEmailMessage(batch: MessageBatch, env: Env, _ctx: Execution
 
 	if (emails.length > 0) {
 		console.log(`sending ${emails.length} emails via Resend...`);
-		await resend.batch.send(emails);
-		console.log('emails sent successfully.');
+		try {
+			await resend.batch.send(emails);
+			console.log('emails sent successfully.');
+		} catch (err) {
+			console.error('failed to send emails via Resend:', err);
+			batch.retryAll();
+		}
 	}
 }
 
@@ -306,6 +311,10 @@ async function handleGcmMessage(batch: MessageBatch, env: Env, ctx: ExecutionCon
 				ctx.waitUntil(db.delete(fcm_tokens).where(eq(fcm_tokens.token, token)));
 			} else if (!res.ok) {
 				console.error(`FCM send failed (${res.status}): ${await res.text()}`);
+			}
+
+			if (!res.ok) {
+				message.retry();
 			}
 		}
 

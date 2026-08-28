@@ -38,7 +38,6 @@ self.addEventListener('push', event => {
 
     event.waitUntil(self.registration.showNotification(payload.title || 'Completionist', {
         body: payload.body || '',
-        icon: '/favicon.svg',
         tag,
         renotify: false,
         data: { ...metadata, url }

@@ -30,6 +30,7 @@
 		unregisterServiceWorker
 	} from '$lib/notificationStuff';
 	import { notificationPath } from '$lib/notification-links';
+	import favicon from '$lib/assets/favicon.svg';
 
 	let {
 		isOwner = false,
@@ -355,7 +356,7 @@
 			const notification = new Notification(`New message from ${sender}`, {
 				body,
 				tag: `direct-message-${message.id}`,
-				icon: message.from_user?.profile_picture_url ?? '/favicon.svg'
+				icon: message.from_user?.profile_picture_url ?? favicon
 			});
 			notification.onclick = () => {
 				notification.close();
@@ -1238,6 +1239,9 @@
 
 	/* Mobile bottom-sheet share */
 	@media (max-width: 860px) {
+		.head {
+			padding-right: 36px;
+		}
 		.share-dialog {
 			top: auto;
 			bottom: 0;
