@@ -1214,7 +1214,9 @@
 		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
 	}
 	.settings-dialog {
-		margin: 0;
+		inset: 0;
+		margin: auto;
+		transform: none;
 		border: 0;
 		color: var(--color-foreground);
 		max-height: calc(100dvh - 32px);
