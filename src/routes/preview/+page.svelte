@@ -316,12 +316,40 @@
 	}
 </script>
 
+{#snippet upcomingQueue(queue: RichTask[])}
+	<div class="countdown-upcoming">
+		<div class="countdown-upcoming-heading">
+			<span>Upcoming next</span>
+			<small>{queue.length ? `${queue.length} queued` : 'Queue clear'}</small>
+		</div>
+		{#if queue.length}
+			<div class="countdown-upcoming-list">
+				{#each queue as queuedEvent (queuedEvent.id)}
+					<div class="countdown-upcoming-item">
+						<span
+							class="countdown-upcoming-color"
+							style:background={`rgb(${queuedEvent.color.r}, ${queuedEvent.color.g}, ${queuedEvent.color.b})`}
+						></span>
+						<strong>{queuedEvent.task_name}</strong>
+						<time datetime={new Date(queuedEvent.start_at).toISOString()}
+							>{startsIn(+new Date(queuedEvent.start_at))}</time
+						>
+					</div>
+				{/each}
+			</div>
+		{:else}
+			<div class="countdown-upcoming-empty">No other events are scheduled.</div>
+		{/if}
+	</div>
+{/snippet}
+
 {#snippet eventClockCard(
 	event: RichTask,
 	intro: boolean,
 	remainingMs: number,
 	totalMs: number,
-	debugLabel: string | null = null
+	debugLabel: string | null = null,
+	queue: RichTask[] = []
 )}
 	<div class="clock-event-card" class:intro transition:scale={{ start: 0.92, duration: 280 }}>
 		{#if debugLabel}<div class="debug-mode">{debugLabel}</div>{/if}
@@ -355,6 +383,7 @@
 		<div class="eyebrow">{intro ? 'Event triggered' : 'Active event'}</div>
 		<h3>{event.task_name}</h3>
 		<p>{intro ? 'The countdown is about to begin.' : `Started ${startLabel(event)}`}</p>
+		{@render upcomingQueue(queue)}
 	</div>
 {/snippet}
 
@@ -505,28 +534,7 @@
 				<h3>{nextEvent.task_name}</h3>
 				<div class="timer">{countdownWithMs(timerMsUntilNext)}</div>
 				<p>Starts in under one minute.</p>
-				{#if followingEvents.length}
-					<div class="countdown-upcoming">
-						<div class="countdown-upcoming-heading">
-							<span>Upcoming next</span>
-							<small>{followingEvents.length} queued</small>
-						</div>
-						<div class="countdown-upcoming-list">
-							{#each followingEvents as event (event.id)}
-								<div class="countdown-upcoming-item">
-									<span
-										class="countdown-upcoming-color"
-										style:background={`rgb(${event.color.r}, ${event.color.g}, ${event.color.b})`}
-									></span>
-									<strong>{event.task_name}</strong>
-									<time datetime={new Date(event.start_at).toISOString()}
-										>{startsIn(+new Date(event.start_at))}</time
-									>
-								</div>
-							{/each}
-						</div>
-					</div>
-				{/if}
+				{@render upcomingQueue(followingEvents)}
 			</div>
 		</div>
 	{/if}
@@ -537,7 +545,9 @@
 				activeEvent,
 				!activeCountdownReady,
 				+new Date(activeEvent.end_at) - timerNowMs,
-				+new Date(activeEvent.end_at) - +new Date(activeEvent.start_at)
+				+new Date(activeEvent.end_at) - +new Date(activeEvent.start_at),
+				null,
+				upcomingEvents.slice(0, 3)
 			)}
 		</div>
 	{/if}
@@ -559,7 +569,8 @@
 				debugIntroActive,
 				debugEndMs - timerNowMs,
 				debugEndMs - debugIntroEndMs,
-				`${data.debugEnvironment ?? 'shared'} preview · broadcast to subscribers`
+				`${data.debugEnvironment ?? 'shared'} preview · broadcast to subscribers`,
+				upcomingEvents.slice(0, 3)
 			)}
 		</div>
 	{/if}
@@ -1075,6 +1086,14 @@
 		font-size: 9px;
 		font-variant-numeric: tabular-nums;
 	}
+	.countdown-upcoming-empty {
+		padding: 9px 10px;
+		border: 1px dashed rgb(255 255 255 / 16%);
+		border-radius: 9px;
+		color: #9aa0a6;
+		font-size: 10px;
+		text-align: center;
+	}
 	.eyebrow {
 		text-transform: uppercase;
 		font-size: 11px;
@@ -1125,7 +1144,9 @@
 		display: grid;
 		justify-items: center;
 		width: min(520px, calc(100vw - 40px));
+		max-height: calc(100vh - 40px);
 		padding: 28px 28px 26px;
+		overflow-y: auto;
 		border: 1px solid rgb(255 255 255 / 38%);
 		border-radius: 24px;
 		background: rgb(248 250 253 / 96%);
@@ -1133,6 +1154,23 @@
 		box-shadow: 0 18px 60px rgb(32 33 36 / 24%);
 		pointer-events: auto;
 		text-align: center;
+	}
+	.clock-event-card .countdown-upcoming {
+		width: 100%;
+		border-top-color: #e1e3e1;
+	}
+	.clock-event-card .countdown-upcoming-heading {
+		color: #5f6368;
+	}
+	.clock-event-card .countdown-upcoming-item {
+		background: #f0f4f9;
+	}
+	.clock-event-card .countdown-upcoming-item time {
+		color: #5f6368;
+	}
+	.clock-event-card .countdown-upcoming-empty {
+		border-color: #d8dde6;
+		color: #80868b;
 	}
 	.event-clock {
 		position: relative;
