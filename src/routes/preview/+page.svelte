@@ -362,7 +362,7 @@
 	<title>Calendar Preview</title>
 </svelte:head>
 
-<div class="wrap" class:dimmed={isCountdownState}>
+<div class="wrap">
 	<header class="top">
 		<span class="logo"><MdiIcon path={mdiCalendarMonth} size={18} /></span>
 		<h1>Calendar preview</h1>
@@ -505,6 +505,28 @@
 				<h3>{nextEvent.task_name}</h3>
 				<div class="timer">{countdownWithMs(timerMsUntilNext)}</div>
 				<p>Starts in under one minute.</p>
+				{#if followingEvents.length}
+					<div class="countdown-upcoming">
+						<div class="countdown-upcoming-heading">
+							<span>Upcoming next</span>
+							<small>{followingEvents.length} queued</small>
+						</div>
+						<div class="countdown-upcoming-list">
+							{#each followingEvents as event (event.id)}
+								<div class="countdown-upcoming-item">
+									<span
+										class="countdown-upcoming-color"
+										style:background={`rgb(${event.color.r}, ${event.color.g}, ${event.color.b})`}
+									></span>
+									<strong>{event.task_name}</strong>
+									<time datetime={new Date(event.start_at).toISOString()}
+										>{startsIn(+new Date(event.start_at))}</time
+									>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -562,9 +584,6 @@
 		transition:
 			filter 150ms ease,
 			background 150ms ease;
-	}
-	.wrap.dimmed {
-		filter: brightness(0.55) saturate(0.85);
 	}
 	.top {
 		display: flex;
@@ -964,22 +983,29 @@
 
 	.countdown-overlay,
 	.active-overlay {
-		position: absolute;
+		position: fixed;
 		inset: 0;
 		display: grid;
 		place-items: center;
 		pointer-events: none;
-		z-index: 10;
+		z-index: 1000;
+	}
+	.countdown-overlay {
+		background: rgb(18 22 28 / 68%);
+		backdrop-filter: blur(3px);
 	}
 	.countdown-card {
 		pointer-events: auto;
-		background: rgba(20, 24, 29, 0.78);
+		background: rgb(20 24 29 / 94%);
 		color: #fff;
-		border-radius: 16px;
-		padding: 22px 26px;
+		border: 1px solid rgb(255 255 255 / 14%);
+		border-radius: 20px;
+		padding: 24px 26px 20px;
 		text-align: center;
-		min-width: min(420px, calc(100vw - 40px));
-		backdrop-filter: blur(4px);
+		width: min(460px, calc(100vw - 40px));
+		max-height: calc(100vh - 40px);
+		overflow-y: auto;
+		box-shadow: 0 24px 72px rgb(0 0 0 / 38%);
 	}
 	.countdown-card h3 {
 		margin: 6px 0 10px;
@@ -996,6 +1022,59 @@
 		margin: 10px 0 0;
 		opacity: 0.9;
 	}
+	.countdown-upcoming {
+		margin-top: 20px;
+		padding-top: 15px;
+		border-top: 1px solid rgb(255 255 255 / 14%);
+		text-align: left;
+	}
+	.countdown-upcoming-heading {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 9px;
+		color: #c4c7c5;
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.09em;
+		text-transform: uppercase;
+	}
+	.countdown-upcoming-heading small {
+		color: #8ab4f8;
+		font-size: 8px;
+	}
+	.countdown-upcoming-list {
+		display: grid;
+		gap: 4px;
+	}
+	.countdown-upcoming-item {
+		display: grid;
+		grid-template-columns: 8px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 9px;
+		min-height: 31px;
+		padding: 3px 8px;
+		border-radius: 9px;
+		background: rgb(255 255 255 / 5%);
+	}
+	.countdown-upcoming-color {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		box-shadow: 0 0 0 3px rgb(255 255 255 / 5%);
+	}
+	.countdown-upcoming-item strong {
+		overflow: hidden;
+		font-size: 11px;
+		font-weight: 550;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.countdown-upcoming-item time {
+		color: #bdc1c6;
+		font-size: 9px;
+		font-variant-numeric: tabular-nums;
+	}
 	.eyebrow {
 		text-transform: uppercase;
 		font-size: 11px;
@@ -1004,11 +1083,12 @@
 	}
 
 	.active-overlay {
+		z-index: 1010;
 		background: rgba(110, 114, 121, 0.94);
 		pointer-events: none;
 	}
 	.debug-overlay {
-		z-index: 30;
+		z-index: 1020;
 		background: rgb(32 33 36 / 82%);
 		backdrop-filter: blur(4px);
 	}
