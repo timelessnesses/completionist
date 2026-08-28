@@ -18,7 +18,7 @@ export async function issuingNewSessionToken(
 		user_id: resolvedUser.id
 	})
 		.setIssuedAt()
-		.setExpirationTime('10s')
+		.setExpirationTime(new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS))
 		.setSubject(
 			(
 				await database.query.user_identities.findFirst({
