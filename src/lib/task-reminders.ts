@@ -60,10 +60,13 @@ export function buildTaskReminderNotifications(
 				group: task.id,
 				extra: {
 					scope: 'task-reminder',
+					type: 'task_notification',
+					task_id: task.id,
 					taskId: task.id,
 					dayOffset,
 					remainingDays,
-					dueAt: due.toISOString()
+					dueAt: due.toISOString(),
+					url: `/?${new URLSearchParams({ notification: 'task', task_id: task.id })}`
 				}
 			});
 		}

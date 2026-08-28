@@ -52,19 +52,12 @@
 	let view = $state<View>('Month');
 	let viewDate = $state(new Date());
 	let activeFilters = $state(new Set<string>());
-	let knownFilterIds = new Set<string>();
 	let detailsOpen = $state(false);
 	let selectedEvent = $state<RichTask | null>(null);
 
 	$effect(() => {
 		const currentFilterIds = new Set(filters.map((filter) => filter.id));
 		const next = new Set([...activeFilters].filter((id) => currentFilterIds.has(id)));
-
-		for (const id of currentFilterIds) {
-			if (!knownFilterIds.has(id)) next.add(id);
-		}
-
-		knownFilterIds = currentFilterIds;
 		if (next.size !== activeFilters.size || [...next].some((id) => !activeFilters.has(id))) {
 			activeFilters = next;
 		}
@@ -72,11 +65,11 @@
 
 	const cells = $derived(buildMonthGrid(viewDate.getFullYear(), viewDate.getMonth()));
 	const filteredEvents = $derived.by(() => {
-		if (activeFilters.size === filters.length) return events;
+		if (activeFilters.size === 0) return events;
 
 		return events.filter((event) => {
 			const tagIds = (event.tags ?? []).map((link) => link.tag_id);
-			return tagIds.length === 0 || tagIds.some((id) => activeFilters.has(id));
+			return tagIds.some((id) => activeFilters.has(id));
 		});
 	});
 	const eventsByDay = $derived.by(() => {
@@ -140,6 +133,10 @@
 		activeFilters = next;
 	}
 
+	function showAllTags() {
+		activeFilters = new Set();
+	}
+
 	function handleUpdated(ev: RichTask) {
 		onUpdated?.(ev);
 	}
@@ -187,8 +184,22 @@
 
 	<div class="chips">
 		<span class="chip-label">FILTERS:</span>
+		<button
+			class="chip all-tags"
+			class:off={activeFilters.size > 0}
+			aria-pressed={activeFilters.size === 0}
+			onclick={showAllTags}
+		>
+			<span class="all-tags-mark" aria-hidden="true"></span>
+			Show all
+		</button>
 		{#each filters as f (f.id)}
-			<button class="chip" class:off={!activeFilters.has(f.id)} onclick={() => toggleFilter(f.id)}>
+			<button
+				class="chip"
+				class:off={!activeFilters.has(f.id)}
+				aria-pressed={activeFilters.has(f.id)}
+				onclick={() => toggleFilter(f.id)}
+			>
 				<span class="dot" style:background={colorHex(f.color)}></span>
 				{f.tag}
 			</button>
@@ -370,9 +381,33 @@
 		cursor: pointer;
 		font-size: 12.5px;
 		color: #1f1f1f;
+		transition:
+			opacity 150ms ease,
+			background 150ms ease,
+			border-color 150ms ease,
+			box-shadow 150ms ease;
+	}
+	.chip:not(.off) {
+		border-color: #a8c7fa;
+		background: #e8f0fe;
+		color: #0842a0;
+		box-shadow: inset 0 0 0 1px rgb(11 87 208 / 6%);
 	}
 	.chip.off {
 		opacity: 0.45;
+	}
+	.chip:hover {
+		opacity: 1;
+	}
+	.chip:focus-visible {
+		outline: 2px solid #0b57d0;
+		outline-offset: 2px;
+	}
+	.all-tags-mark {
+		width: 9px;
+		height: 9px;
+		border-radius: 50%;
+		background: conic-gradient(#0b57d0 0 25%, #34a853 0 50%, #fbbc04 0 75%, #ea4335 0);
 	}
 	.dot {
 		width: 8px;

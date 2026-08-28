@@ -107,11 +107,13 @@ export function buildTaskNotificationEnvelope(
 		message,
 		html,
 		data: {
+			type: 'task_notification',
 			task_id: serialized.id,
 			action,
 			task_name: serialized.task_name,
 			completed: String(serialized.completed ?? ''),
-			end_at: String(serialized.end_at)
+			end_at: String(serialized.end_at),
+			url: `/?${new URLSearchParams({ notification: 'task', task_id: serialized.id })}`
 		},
 		recipient_user_ids: serialized.recipient_user_ids,
 		deliver: {

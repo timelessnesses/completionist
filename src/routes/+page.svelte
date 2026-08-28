@@ -25,13 +25,15 @@
 	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 	import { onMount, tick } from 'svelte';
 	import { subscribeWS } from '$lib/websocket.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { invalidateAll, replaceState } from '$app/navigation';
+	import { page } from '$app/state';
 	import { Capacitor } from '@capacitor/core';
 	import { LocalNotifications } from '@capacitor/local-notifications';
 	import { PushNotifications } from '@capacitor/push-notifications';
 	import { env } from '$env/dynamic/public';
 	import { buildTaskReminderNotifications } from '$lib/task-reminders';
 	import { registerServiceWorker, requestForNotificationPermission } from '$lib/notificationStuff';
+	import { notificationPath } from '$lib/notification-links';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
@@ -43,6 +45,12 @@
 	let taskBusy = $state(false);
 	let taskAction = $state<'none' | 'save' | 'toggle' | 'comment' | 'attachment'>('none');
 	let taskError = $state('');
+	let notificationTaskId = $state<string | null>(null);
+	let notificationUserId = $state<string | null>(null);
+	let notificationMessageId = $state<string | null>(null);
+	let notificationNotice = $state<{ title: string; message: string } | null>(null);
+	let handledNotificationLink = '';
+	let notificationHighlightTimer: number | null = null;
 	let commentDraft = $state('');
 	let tagDraft = $state('');
 	let dependencyDraft = $state('');
@@ -74,6 +82,7 @@
 		railOpen = false;
 		peopleOpen = false;
 		taskBoardOpen = false;
+		notificationNotice = null;
 	}
 
 	let { data }: PageProps = $props();
@@ -225,6 +234,69 @@
 		events = events.filter((x) => x.id !== id);
 		if (selectedTaskId === id) selectedTaskId = null;
 	}
+
+	async function openNotificationLink(url: URL) {
+		const kind = url.searchParams.get('notification');
+		const taskId = url.searchParams.get('task_id');
+		const userId = url.searchParams.get('user_id');
+		const messageId = url.searchParams.get('message_id');
+
+		if (kind === 'dm' || kind === 'direct_message') {
+			if (!userId || !users.some((candidate) => candidate.id === userId)) {
+				notificationNotice = {
+					title: 'Conversation unavailable',
+					message: 'This person is no longer available in your workspace.'
+				};
+			} else {
+				closeAll();
+				notificationUserId = userId;
+				notificationMessageId = messageId;
+				peopleOpen = true;
+			}
+		} else if (kind === 'task' || kind === 'event') {
+			const target = taskId ? events.find((event) => event.id === taskId) : null;
+			if (!target) {
+				notificationNotice = {
+					title: 'Event unavailable',
+					message: 'This event was deleted or is no longer available to you.'
+				};
+			} else {
+				closeAll();
+				taskSearch = '';
+				foldedTaskIds = new Set();
+				selectedTaskId = target.id;
+				notificationTaskId = target.id;
+				taskBoardOpen = true;
+				await tick();
+				window.requestAnimationFrame(() => {
+					document
+						.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(target.id)}"]`)
+						?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				});
+				if (notificationHighlightTimer !== null) {
+					window.clearTimeout(notificationHighlightTimer);
+				}
+				notificationHighlightTimer = window.setTimeout(() => {
+					notificationTaskId = null;
+				}, 4_500);
+			}
+		}
+
+		const cleanUrl = new URL(url);
+		for (const key of ['notification', 'task_id', 'user_id', 'message_id']) {
+			cleanUrl.searchParams.delete(key);
+		}
+		replaceState(cleanUrl, page.state);
+	}
+
+	$effect(() => {
+		const kind = page.url.searchParams.get('notification');
+		if (!kind) return;
+		const key = page.url.href;
+		if (handledNotificationLink === key) return;
+		handledNotificationLink = key;
+		void openNotificationLink(new URL(page.url));
+	});
 
 	$effect(() => {
 		if (!Capacitor.isNativePlatform()) return;
@@ -586,6 +658,8 @@
 
 	onMount(() => {
 		let disposed = false;
+		let pushActionHandle: { remove: () => Promise<void> } | null = null;
+		let localActionHandle: { remove: () => Promise<void> } | null = null;
 		const clockTimer = window.setInterval(() => {
 			currentTime = Date.now();
 		}, 30_000);
@@ -604,6 +678,22 @@
 		const unsubscribeWS = subscribeWS({ message: onMessage });
 		(async () => {
 			if (Capacitor.isNativePlatform()) {
+				pushActionHandle = await PushNotifications.addListener(
+					'pushNotificationActionPerformed',
+					(action) => {
+						window.location.assign(
+							notificationPath(action.notification.data as Record<string, unknown>)
+						);
+					}
+				);
+				localActionHandle = await LocalNotifications.addListener(
+					'localNotificationActionPerformed',
+					(action) => {
+						window.location.assign(
+							notificationPath(action.notification.extra as Record<string, unknown>)
+						);
+					}
+				);
 				console.log('requesting notification permission for native platform...');
 				await requestForNotificationPermission();
 			} else {
@@ -617,6 +707,9 @@
 		return () => {
 			disposed = true;
 			window.clearInterval(clockTimer);
+			if (notificationHighlightTimer !== null) window.clearTimeout(notificationHighlightTimer);
+			void pushActionHandle?.remove();
+			void localActionHandle?.remove();
 			unsubscribeWS();
 		};
 	});
@@ -659,7 +752,12 @@
 			<button class="close" aria-label="Close people panel" onclick={closeAll}>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
-			<PeoplePanel isOwner={data.isOwner} {viewerId} />
+			<PeoplePanel
+				isOwner={data.isOwner}
+				{viewerId}
+				openUserId={notificationUserId}
+				openMessageId={notificationMessageId}
+			/>
 		</div>
 
 		{#if railOpen || peopleOpen}
@@ -683,6 +781,28 @@
 			tasks={events}
 		/>
 	</div>
+
+	{#if notificationNotice}
+		<div
+			class="notification-notice-scrim"
+			role="presentation"
+			onclick={() => (notificationNotice = null)}
+		></div>
+		<div
+			class="notification-notice"
+			role="alertdialog"
+			aria-modal="true"
+			aria-labelledby="notification-notice-title"
+		>
+			<span class="notification-notice-mark" aria-hidden="true">!</span>
+			<div>
+				<p class="eyebrow">Notification target</p>
+				<h2 id="notification-notice-title">{notificationNotice.title}</h2>
+				<p>{notificationNotice.message}</p>
+			</div>
+			<button type="button" onclick={() => (notificationNotice = null)}>Got it</button>
+		</div>
+	{/if}
 
 	{#if taskBoardOpen}
 		<div class="task-overlay" aria-hidden="true" onclick={() => (taskBoardOpen = false)}></div>
@@ -708,6 +828,8 @@
 						<div
 							class="task-row"
 							class:root-task={row.depth === 0}
+							class:notification-target={notificationTaskId === task.id}
+							data-task-id={task.id}
 							style:--task-depth={row.depth}
 							style:--reveal-index={Math.min(index, 12)}
 						>
@@ -1106,6 +1228,75 @@
 		background: rgba(15, 23, 42, 0.42);
 		animation: scrim-in 180ms ease-out both;
 	}
+	.notification-notice-scrim {
+		position: fixed;
+		inset: 0;
+		z-index: 90;
+		background: rgb(15 23 42 / 48%);
+		backdrop-filter: blur(3px);
+		animation: scrim-in 180ms ease-out both;
+	}
+	.notification-notice {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		z-index: 95;
+		display: grid;
+		grid-template-columns: 42px minmax(0, 1fr);
+		gap: 14px;
+		width: min(420px, calc(100vw - 40px));
+		box-sizing: border-box;
+		padding: 22px;
+		border: 1px solid var(--color-border);
+		border-radius: 22px;
+		background: var(--color-card);
+		box-shadow: 0 24px 80px rgb(15 23 42 / 34%);
+		color: var(--color-foreground);
+		transform: translate(-50%, -50%);
+		animation: notification-notice-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+	.notification-notice-mark {
+		display: grid;
+		width: 42px;
+		height: 42px;
+		place-items: center;
+		border-radius: 14px;
+		background: color-mix(in oklch, var(--color-primary) 14%, var(--color-card));
+		color: var(--color-primary);
+		font-size: 22px;
+		font-weight: 700;
+	}
+	.notification-notice .eyebrow {
+		margin: 1px 0 4px;
+		color: var(--color-primary);
+		font-size: 10px;
+		letter-spacing: 0.09em;
+	}
+	.notification-notice h2 {
+		margin: 0;
+		font-size: 20px;
+		font-weight: 600;
+	}
+	.notification-notice div > p:last-child {
+		margin: 7px 0 0;
+		color: var(--color-muted-foreground);
+		font-size: 13px;
+		line-height: 1.45;
+	}
+	.notification-notice button {
+		grid-column: 2;
+		justify-self: end;
+		min-width: 76px;
+		padding: 9px 16px;
+		border: 0;
+		border-radius: 999px;
+		background: var(--color-primary);
+		color: var(--color-primary-foreground);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 650;
+		cursor: pointer;
+	}
 	.task-close {
 		position: absolute;
 		top: 14px;
@@ -1210,6 +1401,9 @@
 		animation: task-reveal 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 		animation-delay: calc(var(--reveal-index) * 28ms);
 	}
+	.task-row.notification-target .task-pill {
+		animation: notification-target-pulse 1.15s ease-in-out 3;
+	}
 	.task-row.root-task:not(:first-child) {
 		margin-top: 8px;
 		padding-top: 12px;
@@ -1298,6 +1492,26 @@
 			opacity: 1;
 		}
 	}
+	@keyframes notification-target-pulse {
+		0%,
+		100% {
+			box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 0%, transparent);
+		}
+		45% {
+			border-color: var(--color-primary);
+			box-shadow: 0 0 0 7px color-mix(in oklch, var(--color-primary) 18%, transparent);
+		}
+	}
+	@keyframes notification-notice-in {
+		from {
+			opacity: 0;
+			transform: translate(-50%, calc(-50% + 14px)) scale(0.97);
+		}
+		to {
+			opacity: 1;
+			transform: translate(-50%, -50%) scale(1);
+		}
+	}
 	@media (prefers-reduced-motion: reduce) {
 		.task-row {
 			animation: none;
@@ -1306,7 +1520,10 @@
 			transition: none;
 		}
 		.task-workbench,
-		.task-overlay {
+		.task-overlay,
+		.notification-notice,
+		.notification-notice-scrim,
+		.task-row.notification-target .task-pill {
 			animation: none;
 		}
 	}

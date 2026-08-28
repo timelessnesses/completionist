@@ -255,7 +255,12 @@ async function queueDirectMessageNotifications(
 			type: 'direct_message',
 			message_id: message.id,
 			from_user_id: message.from_user_id,
-			to_user_id: message.to_user_id
+			to_user_id: message.to_user_id,
+			url: `/?${new URLSearchParams({
+				notification: 'dm',
+				user_id: message.from_user_id,
+				message_id: message.id
+			})}`
 		},
 		recipient_user_ids: [message.to_user_id]
 	};

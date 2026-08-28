@@ -97,7 +97,12 @@ async function sendEndingSoonReminders(scheduledTime: number, env: Env) {
 				item.task_name,
 				`This task ends in about ${minutes} minute${minutes === 1 ? '' : 's'}.`
 			),
-			data: { type: 'task_ending_soon', task_id: item.id, end_at: String(+item.end_at) },
+			data: {
+				type: 'task_ending_soon',
+				task_id: item.id,
+				end_at: String(+item.end_at),
+				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
+			},
 			recipient_user_ids: recipients
 		});
 		await env.COMPLETIONIST_KV.put(key, 'sent', { expirationTtl: 86_400 });
@@ -133,7 +138,12 @@ async function sendFourteenDayEmailReminders(scheduledTime: number, env: Env) {
 			subject: `14 days left: ${item.task_name}`,
 			message,
 			html: reminderHtml(item.task_name, message),
-			data: { type: 'task_fourteen_days', task_id: item.id, end_at: String(+item.end_at) },
+			data: {
+				type: 'task_fourteen_days',
+				task_id: item.id,
+				end_at: String(+item.end_at),
+				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
+			},
 			recipient_user_ids: uniqueIds([item.owner, ...item.assignees.map((a) => a.user_id)])
 		});
 		await env.COMPLETIONIST_KV.put(key, 'sent', { expirationTtl: 30 * 86_400 });

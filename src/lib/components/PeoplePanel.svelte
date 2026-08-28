@@ -29,9 +29,19 @@
 		unregisterPushNotifications,
 		unregisterServiceWorker
 	} from '$lib/notificationStuff';
+	import { notificationPath } from '$lib/notification-links';
 
-	let { isOwner = false, viewerId = null }: { isOwner?: boolean; viewerId?: string | null } =
-		$props();
+	let {
+		isOwner = false,
+		viewerId = null,
+		openUserId = null,
+		openMessageId = null
+	}: {
+		isOwner?: boolean;
+		viewerId?: string | null;
+		openUserId?: string | null;
+		openMessageId?: string | null;
+	} = $props();
 
 	type ChatAttachment = {
 		id?: string;
@@ -68,6 +78,7 @@
 	let chatLoading = $state(false);
 	let chatError = $state('');
 	let chatLoaded = $state<Record<string, boolean>>({});
+	let openedNotificationKey = '';
 	const activeMessages = $derived(selectedPerson ? (chatMessages[selectedPerson.id] ?? []) : []);
 
 	// ---- Theme ----
@@ -191,6 +202,16 @@
 			chatLoading = false;
 		}
 	}
+
+	$effect(() => {
+		const userId = openUserId?.trim();
+		if (!userId) return;
+		const key = `${userId}:${openMessageId ?? ''}`;
+		const person = people.find((candidate) => candidate.id === userId);
+		if (!person || openedNotificationKey === key) return;
+		openedNotificationKey = key;
+		void openChat(person);
+	});
 
 	function closeChat() {
 		chatOpen = false;
@@ -331,11 +352,22 @@
 			return;
 		}
 		if ('Notification' in window && Notification.permission === 'granted') {
-			new Notification(`New message from ${sender}`, {
+			const notification = new Notification(`New message from ${sender}`, {
 				body,
 				tag: `direct-message-${message.id}`,
 				icon: message.from_user?.profile_picture_url ?? '/favicon.svg'
 			});
+			notification.onclick = () => {
+				notification.close();
+				window.focus();
+				window.location.assign(
+					notificationPath({
+						type: 'direct_message',
+						message_id: message.id,
+						from_user_id: message.from_user_id
+					})
+				);
+			};
 		}
 	}
 
