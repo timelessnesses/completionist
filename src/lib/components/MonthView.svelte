@@ -11,7 +11,7 @@
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import WeekView from './WeekView.svelte';
-	import EventDetailsDialog from './EventDetailsDialog.svelte';
+	import EventDialog from './EventDialog.svelte';
 	import {
 		WEEKDAYS,
 		MONTHS,
@@ -51,14 +51,37 @@
 
 	let view = $state<View>('Month');
 	let viewDate = $state(new Date());
-	let activeFilters = $state(new Set(filters.map((f) => f.id)));
+	let activeFilters = $state(new Set<string>());
+	let knownFilterIds = new Set<string>();
 	let detailsOpen = $state(false);
 	let selectedEvent = $state<RichTask | null>(null);
 
+	$effect(() => {
+		const currentFilterIds = new Set(filters.map((filter) => filter.id));
+		const next = new Set([...activeFilters].filter((id) => currentFilterIds.has(id)));
+
+		for (const id of currentFilterIds) {
+			if (!knownFilterIds.has(id)) next.add(id);
+		}
+
+		knownFilterIds = currentFilterIds;
+		if (next.size !== activeFilters.size || [...next].some((id) => !activeFilters.has(id))) {
+			activeFilters = next;
+		}
+	});
+
 	const cells = $derived(buildMonthGrid(viewDate.getFullYear(), viewDate.getMonth()));
+	const filteredEvents = $derived.by(() => {
+		if (activeFilters.size === filters.length) return events;
+
+		return events.filter((event) => {
+			const tagIds = (event.tags ?? []).map((link) => link.tag_id);
+			return tagIds.length === 0 || tagIds.some((id) => activeFilters.has(id));
+		});
+	});
 	const eventsByDay = $derived.by(() => {
 		const map = new Map<string, RichTask[]>();
-		for (const ev of events) {
+		for (const ev of filteredEvents) {
 			const start = new Date(ev.start_at);
 			const end = new Date(ev.end_at);
 			const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -221,16 +244,22 @@
 		</div>
 	{:else}
 		<div class="week-wrap">
-			<WeekView {viewDate} {events} followCurrentTime={true} onSelectEvent={openEvent} />
+			<WeekView
+				{viewDate}
+				events={filteredEvents}
+				followCurrentTime={true}
+				onSelectEvent={openEvent}
+			/>
 		</div>
 	{/if}
 
 	<!-- Upcoming list removed -->
 
-	<EventDetailsDialog
+	<EventDialog
 		bind:open={detailsOpen}
 		event={selectedEvent}
 		canEdit={canEditEvent(selectedEvent)}
+		tags={filters}
 		onupdated={handleUpdated}
 		ondeleted={handleDeleted}
 		{users}

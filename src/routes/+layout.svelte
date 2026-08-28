@@ -1,7 +1,7 @@
 <script lang="ts">
 	import '$lib/assets/index.css';
 	import { onMount } from 'svelte';
-	import { connectWS } from '$lib/websocket.svelte';
+	import { subscribeWS } from '$lib/websocket.svelte';
 	import ApiFeedback from '$lib/components/ApiFeedback.svelte';
 	import { installApiFeedback } from '$lib/api-feedback';
 
@@ -37,26 +37,27 @@
 			}
 		};
 
-		void connectWS()
-			.then((connectedWS) => {
-				if (disposed) return;
-				ws = connectedWS;
-				interval = setInterval(() => {
-					if (ws?.readyState === WebSocket.OPEN) {
-						ws.send(JSON.stringify({ type: 'ping', calledWhen: Date.now() }));
-					}
-				}, 1000);
-				ws.addEventListener('message', onMessage);
-			})
-			.catch(() => {
-				/* best effort */
-			});
+		const unsubscribeWS = subscribeWS({
+			open: (connectedWS) => {
+				if (!disposed) ws = connectedWS;
+			},
+			close: () => {
+				ws = undefined;
+				latency = null;
+			},
+			message: onMessage
+		});
+		interval = setInterval(() => {
+			if (ws?.readyState === WebSocket.OPEN) {
+				ws.send(JSON.stringify({ type: 'ping', calledWhen: Date.now() }));
+			}
+		}, 1000);
 
 		return () => {
 			uninstallApiFeedback();
 			disposed = true;
 			if (interval) clearInterval(interval);
-			ws?.removeEventListener('message', onMessage);
+			unsubscribeWS();
 		};
 	});
 </script>

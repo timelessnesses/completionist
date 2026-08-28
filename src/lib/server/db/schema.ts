@@ -2,6 +2,7 @@ import { relations } from 'drizzle-orm';
 import { customType } from 'drizzle-orm/sqlite-core';
 import {
 	integer,
+	index,
 	primaryKey,
 	sqliteTable,
 	text,
@@ -97,6 +98,30 @@ export const user = sqliteTable('user', {
 	refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' }),
 	owner: integer('owner').$type<0 | 1>().notNull().default(0)
 });
+
+export const admin_audit_log = sqliteTable(
+	'admin_audit_log',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		actor_id: text('actor_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		action: text('action').notNull().$type<'create' | 'update' | 'delete' | 'restore'>(),
+		entity_type: text('entity_type').notNull().$type<'event'>().default('event'),
+		entity_id: text('entity_id').notNull(),
+		entity_name: text('entity_name').notNull(),
+		details: text('details'),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [
+		index('admin_audit_log_created_at_idx').on(table.created_at),
+		index('admin_audit_log_entity_idx').on(table.entity_type, table.entity_id)
+	]
+);
 
 export const task_assignee = sqliteTable(
 	'task_assignee',

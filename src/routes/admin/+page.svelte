@@ -5,6 +5,7 @@
 		mdiCalendarCheckOutline,
 		mdiClose,
 		mdiDeleteOutline,
+		mdiHistory,
 		mdiMagnify,
 		mdiPencilOutline,
 		mdiPlus,
@@ -15,8 +16,21 @@
 	import type { RichTask } from '$lib/features/tasks/types';
 	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 
+	type AuditAction = 'create' | 'update' | 'delete' | 'restore';
+	type AuditEntry = {
+		id: string;
+		actor_id: string;
+		action: AuditAction;
+		entity_type: 'event';
+		entity_id: string;
+		entity_name: string;
+		details: string | null;
+		created_at: Date | number | string;
+	};
+
 	let { data }: PageProps = $props();
 	let events = $state<RichTask[]>(data.events as RichTask[]);
+	let auditLogs = $state<AuditEntry[]>(data.auditLogs as AuditEntry[]);
 	let query = $state('');
 	let scope = $state<'active' | 'deleted' | 'all'>('active');
 	let editorOpen = $state(false);
@@ -105,6 +119,7 @@
 			return (formError = 'End time must be after the start time.');
 		}
 
+		const action: AuditAction = editingId ? 'update' : 'create';
 		busyId = 'editor';
 		formError = '';
 		try {
@@ -132,6 +147,7 @@
 			events = editingId
 				? events.map((event) => (event.id === saved.id ? saved : event))
 				: [saved, ...events];
+			prependAuditLog(action, saved);
 			editorOpen = false;
 		} catch (error) {
 			formError = error instanceof Error ? error.message : 'Could not save the event.';
@@ -152,6 +168,7 @@
 			events = events.map((item) =>
 				item.id === event.id ? { ...item, deleted_at: new Date(result.deleted_at) } : item
 			);
+			prependAuditLog('delete', event);
 		} finally {
 			busyId = null;
 		}
@@ -167,6 +184,7 @@
 			if (!response.ok) throw new Error(await response.text());
 			const restored = (await response.json()) as RichTask;
 			events = events.map((item) => (item.id === restored.id ? restored : item));
+			prependAuditLog('restore', restored);
 		} finally {
 			busyId = null;
 		}
@@ -178,6 +196,57 @@
 
 	function dateLabel(value: Date | number | string) {
 		return new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+	}
+
+	function prependAuditLog(action: AuditAction, event: RichTask) {
+		const optimisticEntry: AuditEntry = {
+			id: crypto.randomUUID(),
+			actor_id: data.currentAdmin.id,
+			action,
+			entity_type: 'event',
+			entity_id: event.id,
+			entity_name: event.task_name,
+			details: null,
+			created_at: new Date()
+		};
+		auditLogs = [optimisticEntry, ...auditLogs].slice(0, 100);
+	}
+
+	function auditActor(entry: AuditEntry) {
+		return (
+			data.users.find((user) => user.id === entry.actor_id)?.name ??
+			(entry.actor_id === data.currentAdmin.id ? data.currentAdmin.name : 'Unknown administrator')
+		);
+	}
+
+	function auditDescription(entry: AuditEntry) {
+		if (entry.action === 'create') return 'created this event';
+		if (entry.action === 'update') {
+			if (!entry.details) return 'updated this event';
+			try {
+				const details = JSON.parse(entry.details) as {
+					before?: Record<string, unknown>;
+					after?: Record<string, unknown>;
+				};
+				const changed = Object.keys(details.after ?? {}).filter(
+					(key) => JSON.stringify(details.before?.[key]) !== JSON.stringify(details.after?.[key])
+				);
+				return changed.length
+					? `updated ${changed.slice(0, 3).join(', ')}${changed.length > 3 ? ` and ${changed.length - 3} more` : ''}`
+					: 'updated this event';
+			} catch {
+				return 'updated this event';
+			}
+		}
+		if (entry.action === 'delete') return 'moved this event to recoverable records';
+		return 'restored this event';
+	}
+
+	function auditIcon(action: AuditAction) {
+		if (action === 'create') return mdiPlus;
+		if (action === 'update') return mdiPencilOutline;
+		if (action === 'delete') return mdiDeleteOutline;
+		return mdiRestore;
 	}
 </script>
 
@@ -280,6 +349,43 @@
 			</table>
 			{#if filteredEvents.length === 0}<div class="empty">No records match this view.</div>{/if}
 		</div>
+	</section>
+
+	<section class="audit-log" aria-labelledby="audit-heading">
+		<header class="audit-head">
+			<div class="audit-title">
+				<span class="audit-mark"><MdiIcon path={mdiHistory} size={19} /></span>
+				<div>
+					<p class="kicker">Accountability</p>
+					<h2 id="audit-heading">Recent admin activity</h2>
+				</div>
+			</div>
+			<span class="audit-count">Latest {auditLogs.length} actions</span>
+		</header>
+
+		{#if auditLogs.length}
+			<ol class="audit-list">
+				{#each auditLogs as entry, index (entry.id)}
+					<li style:animation-delay={`${Math.min(index, 12) * 25}ms`}>
+						<span class="audit-icon" data-action={entry.action}>
+							<MdiIcon path={auditIcon(entry.action)} size={16} />
+						</span>
+						<span class="audit-copy">
+							<span><strong>{auditActor(entry)}</strong> {auditDescription(entry)}</span>
+							<small>{entry.entity_name}</small>
+						</span>
+						<span class="audit-meta">
+							<span class="audit-action" data-action={entry.action}>{entry.action}</span>
+							<time datetime={new Date(entry.created_at).toISOString()}
+								>{dateLabel(entry.created_at)}</time
+							>
+						</span>
+					</li>
+				{/each}
+			</ol>
+		{:else}
+			<div class="audit-empty">Admin CRUD activity will appear here.</div>
+		{/if}
 	</section>
 </main>
 
@@ -650,6 +756,136 @@
 		color: #5f6368;
 		text-align: center;
 	}
+	.audit-log {
+		max-width: 1440px;
+		margin: 16px auto 0;
+		border: 1px solid #e1e3e1;
+		border-radius: 16px;
+		overflow: hidden;
+		background: #fff;
+	}
+	.audit-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		padding: 16px 18px;
+		border-bottom: 1px solid #e8eaed;
+	}
+	.audit-title {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.audit-title h2 {
+		font-size: 19px;
+	}
+	.audit-mark {
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		border-radius: 50%;
+		color: #0b57d0;
+		background: #e8f0fe;
+	}
+	.audit-count {
+		padding: 6px 10px;
+		border-radius: 999px;
+		color: #444746;
+		background: #f0f4f9;
+		font-size: 11px;
+	}
+	.audit-list {
+		max-height: 430px;
+		margin: 0;
+		padding: 0;
+		overflow-y: auto;
+		list-style: none;
+	}
+	.audit-list li {
+		display: grid;
+		grid-template-columns: 36px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 12px;
+		padding: 13px 18px;
+		border-top: 1px solid #f0f1f2;
+		animation: row-in 300ms ease both;
+	}
+	.audit-list li:first-child {
+		border-top: 0;
+	}
+	.audit-list li:hover {
+		background: #f8fafd;
+	}
+	.audit-icon {
+		display: grid;
+		place-items: center;
+		width: 34px;
+		height: 34px;
+		border-radius: 50%;
+		color: #0b57d0;
+		background: #e8f0fe;
+	}
+	.audit-icon[data-action='delete'] {
+		color: #b3261e;
+		background: #fce8e6;
+	}
+	.audit-icon[data-action='restore'] {
+		color: #0d652d;
+		background: #e6f4ea;
+	}
+	.audit-copy,
+	.audit-meta {
+		display: grid;
+		gap: 3px;
+	}
+	.audit-copy {
+		min-width: 0;
+		font-size: 13px;
+	}
+	.audit-copy strong {
+		font-weight: 600;
+	}
+	.audit-copy small {
+		overflow: hidden;
+		color: #5f6368;
+		font-size: 11px;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.audit-meta {
+		justify-items: end;
+	}
+	.audit-meta time {
+		color: #5f6368;
+		font-size: 10px;
+		white-space: nowrap;
+	}
+	.audit-action {
+		padding: 3px 8px;
+		border-radius: 999px;
+		color: #0842a0;
+		background: #e8f0fe;
+		font-size: 9px;
+		font-weight: 700;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.audit-action[data-action='delete'] {
+		color: #b3261e;
+		background: #fce8e6;
+	}
+	.audit-action[data-action='restore'] {
+		color: #0d652d;
+		background: #e6f4ea;
+	}
+	.audit-empty {
+		padding: 42px 18px;
+		color: #5f6368;
+		font-size: 13px;
+		text-align: center;
+	}
 	.scrim {
 		position: fixed;
 		inset: 0;
@@ -807,6 +1043,22 @@
 		}
 		.scope button {
 			flex: 1;
+		}
+		.audit-head {
+			align-items: flex-start;
+		}
+		.audit-count {
+			display: none;
+		}
+		.audit-list li {
+			grid-template-columns: 34px minmax(0, 1fr);
+			padding: 12px;
+		}
+		.audit-meta {
+			grid-column: 2;
+			grid-template-columns: auto 1fr;
+			justify-items: start;
+			align-items: center;
 		}
 		.editor form {
 			grid-template-columns: 1fr;

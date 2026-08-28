@@ -11,6 +11,7 @@ import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
 import type { Color } from '$lib/server/db/schema.js';
 import { buildTaskNotificationEnvelope } from '$lib/server/task-fanout';
+import { recordAdminEventAction } from '$lib/server/admin-audit';
 
 type CreateBody = {
 	task_name: string;
@@ -128,6 +129,15 @@ export const POST = async ({ request, platform, locals }) => {
 
 	const createdWithRelations = await fetchTaskWithRelations(db, created.id);
 	const createdWithRelationsFirst = createdWithRelations[0] ?? created;
+	if (user.admin) {
+		await recordAdminEventAction(db, {
+			actorId: user.user_id,
+			action: 'create',
+			entityId: created.id,
+			entityName: created.task_name,
+			details: { after: auditEventSnapshot(createdWithRelationsFirst) }
+		});
+	}
 
 	try {
 		const stub = (platform?.env as Env).GlobalWS.getByName('global_ws');
@@ -175,6 +185,9 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	if (!canEdit) {
 		throw svelteError(403, 'Forbidden');
 	}
+	const auditBefore = user.admin
+		? auditEventSnapshot((await fetchTaskWithRelations(db, id))[0] ?? existing)
+		: null;
 	const dependencyIds =
 		body.dependency_ids === undefined ? undefined : normalizeDependencyIds(body.dependency_ids);
 	if (dependencyIds !== undefined) {
@@ -266,6 +279,15 @@ export const PUT = async ({ request, platform, locals, url }) => {
 
 	const updatedRows = await fetchTaskWithRelations(db, id);
 	const updated = updatedRows[0] ?? { ...existing, ...updates };
+	if (user.admin) {
+		await recordAdminEventAction(db, {
+			actorId: user.user_id,
+			action: 'update',
+			entityId: id,
+			entityName: updated.task_name,
+			details: { before: auditBefore, after: auditEventSnapshot(updated) }
+		});
+	}
 
 	try {
 		const stub = (platform?.env as Env).GlobalWS.getByName('global_ws');
@@ -461,6 +483,36 @@ async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) 
 	}));
 }
 
+function auditEventSnapshot(value: {
+	task_name: string;
+	owner: string;
+	start_at: Date | number | string;
+	end_at: Date | number | string;
+	status: string;
+	importance_value: number;
+	all_day: number;
+	completed: Date | number | string | null;
+	deleted_at?: Date | number | string | null;
+	assignees?: Array<{ user_id: string }>;
+	dependencies?: Array<{ dependency_id: string }>;
+	tags?: Array<{ tag_id: string }>;
+}) {
+	return {
+		name: value.task_name,
+		ownerId: value.owner,
+		startAt: +new Date(value.start_at),
+		endAt: +new Date(value.end_at),
+		status: value.status,
+		importance: value.importance_value,
+		allDay: !!value.all_day,
+		completedAt: value.completed ? +new Date(value.completed) : null,
+		deletedAt: value.deleted_at ? +new Date(value.deleted_at) : null,
+		assigneeIds: value.assignees?.map((assignee) => assignee.user_id),
+		dependencyIds: value.dependencies?.map((dependency) => dependency.dependency_id),
+		tagIds: value.tags?.map((tag) => tag.tag_id)
+	};
+}
+
 export const DELETE = async ({ platform, locals, url }) => {
 	const user = locals.user;
 	if (!user) {
@@ -484,9 +536,21 @@ export const DELETE = async ({ platform, locals, url }) => {
 	if (!canDelete) {
 		throw svelteError(403, 'Forbidden');
 	}
+	const auditBefore = user.admin
+		? auditEventSnapshot((await fetchTaskWithRelations(db, id))[0] ?? existing)
+		: null;
 
 	const deletedAt = new Date();
 	await db.update(task).set({ deleted_at: deletedAt }).where(eq(task.id, id));
+	if (user.admin) {
+		await recordAdminEventAction(db, {
+			actorId: user.user_id,
+			action: 'delete',
+			entityId: id,
+			entityName: existing.task_name,
+			details: { before: auditBefore, deletedAt: +deletedAt }
+		});
+	}
 
 	try {
 		const stub = (platform?.env as Env).GlobalWS.getByName('global_ws');
@@ -521,6 +585,16 @@ export const PATCH = async ({ platform, locals, url }) => {
 
 	await db.update(task).set({ deleted_at: null }).where(eq(task.id, id));
 	const restored = (await fetchTaskWithRelations(db, id))[0];
+	await recordAdminEventAction(db, {
+		actorId: currentUser.user_id,
+		action: 'restore',
+		entityId: id,
+		entityName: existing.task_name,
+		details: {
+			before: auditEventSnapshot(existing),
+			after: auditEventSnapshot(restored ?? { ...existing, deleted_at: null })
+		}
+	});
 	try {
 		const stub = env.GlobalWS.getByName('global_ws');
 		await stub.fetch('https://global-ws.internal/broadcast', {

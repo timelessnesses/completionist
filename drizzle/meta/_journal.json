@@ -78,6 +78,13 @@
       "when": 1787896800000,
       "tag": "0010_soft_delete_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1787888803062,
+      "tag": "0011_colorful_lilandra",
+      "breakpoints": true
     }
   ]
 }

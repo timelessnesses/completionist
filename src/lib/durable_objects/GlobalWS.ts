@@ -76,6 +76,11 @@ export class GlobalWS extends DurableObject {
 			this.broadcastDirectMessage(payload);
 			return new Response('ok', { status: 200 });
 		}
+		if (url.pathname.endsWith('/preview-debug') && request.method === 'POST') {
+			const payload = await request.json();
+			this.broadcastPreviewJSON(payload);
+			return new Response('ok', { status: 200 });
+		}
 		if (request.headers.get('Upgrade') !== 'websocket') {
 			return new Response('websocket only!!!!', { status: 426 });
 		}
@@ -105,6 +110,19 @@ export class GlobalWS extends DurableObject {
 
 	broadcastShouldRefetch(exclude?: WebSocket) {
 		this.broadcastJSON({ type: 'shouldRefetch' }, exclude);
+	}
+
+	broadcastPreviewJSON(payload: unknown) {
+		const message = JSON.stringify(payload);
+		this.ctx.getWebSockets().forEach((socket) => {
+			const session = socket.deserializeAttachment() as ClientSession | null;
+			if (!session?.preview) return;
+			try {
+				socket.send(message);
+			} catch {
+				/* ignore disconnected preview subscribers */
+			}
+		});
 	}
 
 	broadcastDirectMessage(payload: DirectMessageEvent) {

@@ -3,7 +3,7 @@
 	import MonthView from '$lib/components/MonthView.svelte';
 	import PeoplePanel from '$lib/components/PeoplePanel.svelte';
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
-	import CreateEventDialog from '$lib/components/CreateEventDialog.svelte';
+	import EventDialog from '$lib/components/EventDialog.svelte';
 	import {
 		mdiPlus,
 		mdiClose,
@@ -24,7 +24,7 @@
 	import type { RichTask, UserSummary } from '$lib/features/tasks/types';
 	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 	import { onMount, tick } from 'svelte';
-	import { getWS } from '$lib/websocket.svelte';
+	import { subscribeWS } from '$lib/websocket.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { Capacitor } from '@capacitor/core';
 	import { LocalNotifications } from '@capacitor/local-notifications';
@@ -68,6 +68,7 @@
 	});
 	let reminderSyncInFlight = false;
 	let reminderPermissionReady = false;
+	let currentTime = $state(Date.now());
 
 	function closeAll() {
 		railOpen = false;
@@ -83,7 +84,8 @@
 				(task) =>
 					!task.completed &&
 					task.status !== 'cancelled' &&
-					new Date(task.start_at) >= startOfToday()
+					+new Date(task.start_at) >= +startOfToday(currentTime) &&
+					+new Date(task.end_at) > currentTime
 			)
 			.sort(
 				(a, b) =>
@@ -94,7 +96,7 @@
 		[...events]
 			.filter(
 				(task) =>
-					!task.completed && task.status !== 'cancelled' && +new Date(task.end_at) < Date.now()
+					!task.completed && task.status !== 'cancelled' && +new Date(task.end_at) <= currentTime
 			)
 			.sort(
 				(a, b) => assignmentRank(a) - assignmentRank(b) || +new Date(a.end_at) - +new Date(b.end_at)
@@ -262,8 +264,8 @@
 		}
 	}
 
-	function startOfToday(): Date {
-		const now = new Date();
+	function startOfToday(timestamp = Date.now()): Date {
+		const now = new Date(timestamp);
 		return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 	}
 
@@ -583,8 +585,10 @@
 	}
 
 	onMount(() => {
-		let ws: WebSocket | undefined;
 		let disposed = false;
+		const clockTimer = window.setInterval(() => {
+			currentTime = Date.now();
+		}, 30_000);
 		const onMessage = (event: MessageEvent) => {
 			let data: any;
 			try {
@@ -597,15 +601,7 @@
 			}
 		};
 
-		getWS()
-			.then((connectedWS) => {
-				if (disposed) return;
-				ws = connectedWS;
-				ws.addEventListener('message', onMessage);
-			})
-			.catch(() => {
-				/* best effort */
-			});
+		const unsubscribeWS = subscribeWS({ message: onMessage });
 		(async () => {
 			if (Capacitor.isNativePlatform()) {
 				console.log('requesting notification permission for native platform...');
@@ -620,7 +616,8 @@
 
 		return () => {
 			disposed = true;
-			ws?.removeEventListener('message', onMessage);
+			window.clearInterval(clockTimer);
+			unsubscribeWS();
 		};
 	});
 </script>
@@ -678,9 +675,9 @@
 			<span>Task board</span>
 		</button>
 
-		<CreateEventDialog
+		<EventDialog
 			bind:open={createOpen}
-			onevent={onCreated}
+			oncreated={onCreated}
 			tags={filters}
 			{users}
 			tasks={events}

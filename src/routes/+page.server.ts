@@ -63,11 +63,18 @@ export const load = async ({ params, request, platform, locals }) => {
 
 	const isAdmin = locals.user?.admin ?? false;
 	const viewerId = locals.user?.user_id ?? null;
+	const now = new Date();
 
 	return {
 		event: visibleTasks,
 		upcoming: visibleTasks
-			.filter((t) => t.start_at >= startOfToday())
+			.filter(
+				(t) =>
+					!t.completed &&
+					t.status !== 'cancelled' &&
+					t.start_at >= startOfToday(now) &&
+					t.end_at > now
+			)
 			.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at)),
 		filters,
 		users,
@@ -77,7 +84,6 @@ export const load = async ({ params, request, platform, locals }) => {
 	};
 };
 
-function startOfToday(): Date {
-	const now = new Date();
+function startOfToday(now = new Date()): Date {
 	return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }

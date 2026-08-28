@@ -1,7 +1,13 @@
 <script lang="ts">
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
 	import WeekView from '$lib/components/WeekView.svelte';
-	import { mdiCalendarMonth, mdiCloudSyncOutline } from '@mdi/js';
+	import {
+		mdiAccountMultipleOutline,
+		mdiBugOutline,
+		mdiCalendarMonth,
+		mdiClockOutline,
+		mdiCloudSyncOutline
+	} from '@mdi/js';
 	import {
 		WEEKDAYS,
 		MONTHS,
@@ -12,21 +18,47 @@
 		prettyDate
 	} from '$lib/features/calendar/date';
 	import type { PageProps } from './$types';
-	import type { CalendarEvent } from '$lib/features/tasks/types';
+	import type { RichTask } from '$lib/features/tasks/types';
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { fly, scale } from 'svelte/transition';
+	import { subscribeWS } from '$lib/websocket.svelte';
 
 	const { data }: PageProps = $props();
-	let events = $state<CalendarEvent[]>(data.event);
+	const initialWorkerTime = data.workerTime;
+	let events = $state<RichTask[]>(data.event);
 	let viewDate = $state(new Date());
 	let live = $state(false);
-	let clockOffsetMs = $state(data.workerTime - Date.now());
-	let nowMs = $state(Date.now() + clockOffsetMs);
+	let previewSubscribed = $state(false);
+	let clockOffsetMs = $state(initialWorkerTime - Date.now());
+	let nowMs = $state(initialWorkerTime);
+	let timerNowMs = $state(initialWorkerTime);
 	let clockSynced = $state(false);
 	let clockSyncing = $state(false);
 	let clockLatencyMs = $state<number | null>(null);
 	let workerEdge = $state(data.workerEdge);
+	let activeCountdownReady = $state(false);
+	let lastActiveEventId: string | null = null;
+	let debugEvent = $state<RichTask | null>(null);
+	let debugIntroEndMs = $state(0);
+	let debugEndMs = $state(0);
+	let debugBroadcasting = $state(false);
+	const debugFallbackEvent: RichTask = {
+		id: 'preview-debug-event',
+		parent: null,
+		task_name: 'Preview test event',
+		description: 'Local-only event trigger simulation.',
+		color: { r: 11, g: 87, b: 208 },
+		owner: 'preview-debug',
+		created_at: new Date(),
+		start_at: new Date(),
+		end_at: new Date(Date.now() + 90_000),
+		status: 'todo',
+		all_day: 0,
+		importance_value: 0,
+		completed: null,
+		deleted_at: null
+	};
 
 	$effect(() => {
 		events = data.event;
@@ -34,7 +66,7 @@
 
 	const cells = $derived(buildMonthGrid(viewDate.getFullYear(), viewDate.getMonth()));
 	const eventsByDay = $derived.by(() => {
-		const map = new Map<string, CalendarEvent[]>();
+		const map = new Map<string, RichTask[]>();
 		for (const ev of events) {
 			const start = new Date(ev.start_at);
 			const end = new Date(ev.end_at);
@@ -52,7 +84,9 @@
 		return map;
 	});
 	const sortedByStart = $derived(
-		[...events].sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+		[...events]
+			.filter((event) => !event.completed && event.status !== 'cancelled')
+			.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
 	);
 	const activeEvent = $derived.by(() =>
 		sortedByStart.find((ev) => {
@@ -61,15 +95,42 @@
 			return start <= nowMs && nowMs < end;
 		})
 	);
-	const nextEvent = $derived.by(() => sortedByStart.find((ev) => +new Date(ev.start_at) > nowMs));
+	const upcomingEvents = $derived(
+		sortedByStart.filter(
+			(event) => +new Date(event.start_at) > nowMs && +new Date(event.end_at) > nowMs
+		)
+	);
+	const nextEvent = $derived(upcomingEvents[0]);
+	const followingEvents = $derived(upcomingEvents.slice(1, 4));
 	const msUntilNext = $derived(nextEvent ? +new Date(nextEvent.start_at) - nowMs : Infinity);
+	const timerMsUntilNext = $derived(
+		nextEvent ? +new Date(nextEvent.start_at) - timerNowMs : Infinity
+	);
 	const isCountdownState = $derived(!activeEvent && msUntilNext > 0 && msUntilNext <= 60_000);
-	const upcomingAfterActive = $derived.by(() => {
-		const threshold = activeEvent ? +new Date(activeEvent.end_at) : nowMs;
-		return sortedByStart.filter((ev) => +new Date(ev.start_at) > threshold).slice(0, 4);
-	});
 	const workerClockTime = $derived(formatWorkerTime(nowMs));
 	const workerClockDate = $derived(formatWorkerDate(nowMs));
+	const debugTarget = $derived(nextEvent ?? sortedByStart[0] ?? debugFallbackEvent);
+	const debugIntroActive = $derived(
+		!!debugEvent && debugEndMs - debugIntroEndMs >= 30_000 && timerNowMs < debugIntroEndMs
+	);
+
+	$effect(() => {
+		const eventId = activeEvent?.id ?? null;
+		if (eventId === lastActiveEventId) return;
+		lastActiveEventId = eventId;
+		activeCountdownReady = false;
+		if (!eventId) return;
+		const eventDuration = +new Date(activeEvent!.end_at) - +new Date(activeEvent!.start_at);
+		if (eventDuration < 30_000) {
+			activeCountdownReady = true;
+			return;
+		}
+
+		const revealTimer = window.setTimeout(() => {
+			activeCountdownReady = true;
+		}, 2200);
+		return () => window.clearTimeout(revealTimer);
+	});
 
 	async function syncWorkerClock() {
 		if (clockSyncing) return;
@@ -97,6 +158,9 @@
 	onMount(() => {
 		const tick = setInterval(() => {
 			nowMs = Date.now() + clockOffsetMs;
+		}, 1_000);
+		const timerTick = setInterval(() => {
+			timerNowMs = Date.now() + clockOffsetMs;
 		}, 50);
 		const clockResync = setInterval(() => void syncWorkerClock(), 15_000);
 		const onVisibilityChange = () => {
@@ -105,33 +169,80 @@
 		document.addEventListener('visibilitychange', onVisibilityChange);
 		void syncWorkerClock();
 
-		const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-		const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`);
-
-		ws.addEventListener('open', () => {
-			live = true;
-			ws.send(JSON.stringify({ type: 'preview_subscribe' }));
-		});
-		ws.addEventListener('close', () => (live = false));
-		ws.addEventListener('message', (e) => {
-			let msg: any;
-			try {
-				msg = JSON.parse(e.data);
-			} catch {
-				return;
-			}
-			if (msg.type === 'shouldRefetch') {
-				invalidateAll();
+		const unsubscribeWS = subscribeWS({
+			open: (ws) => {
+				live = true;
+				previewSubscribed = false;
+				ws.send(JSON.stringify({ type: 'preview_subscribe' }));
+			},
+			close: () => {
+				live = false;
+				previewSubscribed = false;
+			},
+			message: (event) => {
+				let message: any;
+				try {
+					message = JSON.parse(event.data);
+				} catch {
+					return;
+				}
+				if (message.type === 'preview_subscribed') previewSubscribed = true;
+				if (message.type === 'shouldRefetch') invalidateAll();
+				if (message.type === 'preview_debug_event') receiveDebugEvent(message);
 			}
 		});
 
 		return () => {
 			clearInterval(tick);
+			clearInterval(timerTick);
 			clearInterval(clockResync);
 			document.removeEventListener('visibilitychange', onVisibilityChange);
-			ws.close();
+			unsubscribeWS();
 		};
 	});
+
+	$effect(() => {
+		if (debugEvent && timerNowMs >= debugEndMs) closeDebugTrigger();
+	});
+
+	async function runDebugTrigger() {
+		if (!data.debugEnvironment || debugBroadcasting) return;
+		debugBroadcasting = true;
+		try {
+			const response = await fetch('/preview/debug', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: debugTarget.id, taskName: debugTarget.task_name })
+			});
+			if (!response.ok) throw new Error(await response.text());
+		} catch (error) {
+			console.error('Could not broadcast preview debug event', error);
+		} finally {
+			debugBroadcasting = false;
+		}
+	}
+
+	function receiveDebugEvent(message: {
+		event?: { id?: string; taskName?: string };
+		introEndsAt?: number;
+		endsAt?: number;
+	}) {
+		if (!message.introEndsAt || !message.endsAt || message.endsAt <= message.introEndsAt) return;
+		const existing = events.find((event) => event.id === message.event?.id);
+		debugEvent = existing ?? {
+			...debugFallbackEvent,
+			id: message.event?.id || debugFallbackEvent.id,
+			task_name: message.event?.taskName || debugFallbackEvent.task_name
+		};
+		debugIntroEndMs = message.introEndsAt;
+		debugEndMs = message.endsAt;
+	}
+
+	function closeDebugTrigger() {
+		debugEvent = null;
+		debugIntroEndMs = 0;
+		debugEndMs = 0;
+	}
 
 	function formatWorkerTime(timestamp: number): string {
 		return new Intl.DateTimeFormat('en-GB', {
@@ -152,7 +263,7 @@
 		}).format(timestamp);
 	}
 
-	function hex(ev: CalendarEvent): string {
+	function hex(ev: RichTask): string {
 		const c = ev.color;
 		if (typeof c === 'object' && c !== null && 'r' in c) {
 			return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
@@ -166,26 +277,86 @@
 
 	function countdownWithMs(ms: number): string {
 		const clamped = Math.max(ms, 0);
-		const minutes = Math.floor(clamped / 60_000);
-		const seconds = Math.floor((clamped % 60_000) / 1000);
-		const millis = clamped % 1000;
-		return `${pad2(minutes)}:${pad2(seconds)}.${`${millis}`.padStart(3, '0')}`;
-	}
-
-	function durationLeft(ms: number): string {
-		const clamped = Math.max(ms, 0);
 		const hours = Math.floor(clamped / 3_600_000);
 		const minutes = Math.floor((clamped % 3_600_000) / 60_000);
 		const seconds = Math.floor((clamped % 60_000) / 1000);
-		return `${pad2(hours)}:${pad2(minutes)}:${pad2(seconds)}`;
+		const millis = Math.floor(clamped % 1000);
+		const clock = `${pad2(minutes)}:${pad2(seconds)}.${`${millis}`.padStart(3, '0')}`;
+		return hours ? `${pad2(hours)}:${clock}` : clock;
 	}
 
-	function startLabel(ev: CalendarEvent): string {
+	function ringOffset(remainingMs: number, totalMs: number): number {
+		const circumference = 301.593;
+		if (totalMs <= 0) return circumference;
+		const ratio = Math.min(Math.max(remainingMs / totalMs, 0), 1);
+		return circumference * (1 - ratio);
+	}
+
+	function startLabel(ev: RichTask): string {
 		const start = new Date(ev.start_at);
 		if (ev.all_day) return prettyDate(toKey(start));
 		return `${prettyDate(toKey(start))}, ${pad2(start.getHours())}:${pad2(start.getMinutes())}`;
 	}
+
+	function eventWindow(event: RichTask): string {
+		const start = new Date(event.start_at);
+		const end = new Date(event.end_at);
+		if (event.all_day) return `${prettyDate(toKey(start))} · All day`;
+		return `${prettyDate(toKey(start))} · ${pad2(start.getHours())}:${pad2(start.getMinutes())}–${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
+	}
+
+	function startsIn(timestamp: number): string {
+		const remaining = Math.max(timestamp - nowMs, 0);
+		const days = Math.floor(remaining / 86_400_000);
+		const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
+		const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+		if (days) return `${days}d ${hours}h`;
+		if (hours) return `${hours}h ${minutes}m`;
+		return `${Math.max(minutes, 1)}m`;
+	}
 </script>
+
+{#snippet eventClockCard(
+	event: RichTask,
+	intro: boolean,
+	remainingMs: number,
+	totalMs: number,
+	debugLabel: string | null = null
+)}
+	<div class="clock-event-card" class:intro transition:scale={{ start: 0.92, duration: 280 }}>
+		{#if debugLabel}<div class="debug-mode">{debugLabel}</div>{/if}
+		<div
+			class="event-clock"
+			class:intro
+			style:--ring-offset={ringOffset(remainingMs, totalMs)}
+			aria-label={intro ? 'Event start animation' : `${countdownWithMs(remainingMs)} remaining`}
+		>
+			<svg viewBox="0 0 104 104" aria-hidden="true">
+				<circle class="clock-track" cx="52" cy="52" r="48"></circle>
+				<circle class="clock-progress" cx="52" cy="52" r="48"></circle>
+			</svg>
+			<div class="clock-center">
+				<div class="countdown-prelude" class:active={intro} aria-hidden="true">
+					<span class="prelude-orbit orbit-outer"></span>
+					<span class="prelude-orbit orbit-middle"></span>
+					<span class="prelude-orbit orbit-inner"></span>
+					<span class="prelude-core"><i></i></span>
+				</div>
+				<div class="event-clock-copy intro-copy" class:active={intro} aria-hidden={!intro}>
+					<strong>Get ready</strong>
+					<small>Preparing countdown</small>
+				</div>
+				<div class="event-clock-copy timer-copy" class:active={!intro} aria-hidden={intro}>
+					<strong>{countdownWithMs(remainingMs)}</strong>
+					<small>Time remaining</small>
+				</div>
+			</div>
+		</div>
+		<div class="eyebrow">{intro ? 'Event triggered' : 'Active event'}</div>
+		<h3>{event.task_name}</h3>
+		<p>{intro ? 'The countdown is about to begin.' : `Started ${startLabel(event)}`}</p>
+	</div>
+{/snippet}
 
 <svelte:head>
 	<title>Calendar Preview</title>
@@ -197,6 +368,21 @@
 		<h1>Calendar preview</h1>
 		<span class="live" class:on={live}>{live ? 'Live' : 'Offline'}</span>
 		<span class="spacer"></span>
+		{#if data.debugEnvironment}
+			<button
+				class="debug-trigger"
+				type="button"
+				disabled={debugBroadcasting || !previewSubscribed}
+				title={previewSubscribed
+					? 'Broadcast the event-trigger animation to preview subscribers'
+					: 'Waiting for the preview subscription'}
+				onclick={runDebugTrigger}
+			>
+				<MdiIcon path={mdiBugOutline} size={16} />
+				<span>{debugBroadcasting ? 'Broadcasting…' : 'Test trigger'}</span>
+				<small>{data.debugEnvironment}</small>
+			</button>
+		{/if}
 		<div
 			class="worker-clock"
 			class:synced={clockSynced}
@@ -220,6 +406,53 @@
 			>›</button
 		>
 	</header>
+
+	{#if nextEvent}
+		<section
+			class="upcoming-feature"
+			style:--event-color={hex(nextEvent)}
+			aria-labelledby="next-event-title"
+			transition:fly={{ y: -8, duration: 300 }}
+		>
+			<div class="feature-main">
+				<div class="feature-kicker"><span></span> Next upcoming event</div>
+				<h2 id="next-event-title">{nextEvent.task_name}</h2>
+				<p class:muted={!nextEvent.description}>
+					{nextEvent.description || 'No description has been added for this event.'}
+				</p>
+				<div class="feature-details">
+					<span><MdiIcon path={mdiClockOutline} size={16} />{eventWindow(nextEvent)}</span>
+					<span>
+						<MdiIcon path={mdiAccountMultipleOutline} size={16} />
+						{#if (nextEvent.assignees ?? []).length}
+							{(nextEvent.assignees ?? [])
+								.map((assignee) => assignee.user?.name ?? assignee.user_id)
+								.join(', ')}
+						{:else}
+							Unassigned
+						{/if}
+					</span>
+				</div>
+			</div>
+			<div class="feature-countdown">
+				<span>Begins in</span>
+				<strong>{startsIn(+new Date(nextEvent.start_at))}</strong>
+				<small>Worker-synced</small>
+			</div>
+			{#if followingEvents.length}
+				<div class="feature-queue" aria-label="More upcoming events">
+					{#each followingEvents as event (event.id)}
+						<div>
+							<span class="queue-dot" style:background={hex(event)}></span>
+							<span class="queue-copy"
+								><strong>{event.task_name}</strong><small>{startLabel(event)}</small></span
+							>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</section>
+	{/if}
 
 	<h2 class="month">{MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}</h2>
 
@@ -270,7 +503,7 @@
 			<div class="countdown-card" transition:scale={{ start: 0.96, duration: 260 }}>
 				<div class="eyebrow">Starting Soon</div>
 				<h3>{nextEvent.task_name}</h3>
-				<div class="timer">{countdownWithMs(msUntilNext)}</div>
+				<div class="timer">{countdownWithMs(timerMsUntilNext)}</div>
 				<p>Starts in under one minute.</p>
 			</div>
 		</div>
@@ -278,24 +511,34 @@
 
 	{#if activeEvent}
 		<div class="active-overlay" aria-live="polite" transition:fly={{ y: 18, duration: 320 }}>
-			<div class="active-card" transition:scale={{ start: 0.94, duration: 320 }}>
-				<div class="eyebrow">Active Event</div>
-				<h3>{activeEvent.task_name}</h3>
-				<div class="left">Time left {durationLeft(+new Date(activeEvent.end_at) - nowMs)}</div>
-				<div class="meta">Started {startLabel(activeEvent)}</div>
-				{#if upcomingAfterActive.length > 0}
-					<div class="next">Upcoming</div>
-					<ul>
-						{#each upcomingAfterActive as ev (ev.id)}
-							<li>
-								<span class="dot" style:background={hex(ev)}></span>
-								<span class="name">{ev.task_name}</span>
-								<span class="when">{startLabel(ev)}</span>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			</div>
+			{@render eventClockCard(
+				activeEvent,
+				!activeCountdownReady,
+				+new Date(activeEvent.end_at) - timerNowMs,
+				+new Date(activeEvent.end_at) - +new Date(activeEvent.start_at)
+			)}
+		</div>
+	{/if}
+
+	{#if debugEvent}
+		<div
+			class="active-overlay debug-overlay"
+			aria-live="polite"
+			transition:fly={{ y: 18, duration: 260 }}
+		>
+			<button
+				class="debug-close"
+				type="button"
+				aria-label="Close debug simulation"
+				onclick={closeDebugTrigger}>×</button
+			>
+			{@render eventClockCard(
+				debugEvent,
+				debugIntroActive,
+				debugEndMs - timerNowMs,
+				debugEndMs - debugIntroEndMs,
+				`${data.debugEnvironment ?? 'shared'} preview · broadcast to subscribers`
+			)}
 		</div>
 	{/if}
 </div>
@@ -422,6 +665,40 @@
 		animation: none;
 		box-shadow: 0 0 0 3px rgba(32, 160, 82, 0.12);
 	}
+	.debug-trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 38px;
+		padding: 0 8px 0 12px;
+		border: 1px solid #f6c453;
+		border-radius: 999px;
+		background: #fef7e0;
+		color: #7a4f01;
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+		transition:
+			background 160ms ease,
+			transform 160ms ease;
+	}
+	.debug-trigger:hover:not(:disabled) {
+		background: #fce8b2;
+		transform: translateY(-1px);
+	}
+	.debug-trigger:disabled {
+		opacity: 0.55;
+		cursor: default;
+	}
+	.debug-trigger small {
+		padding: 3px 6px;
+		border-radius: 999px;
+		background: #f9ab00;
+		color: #3c2a00;
+		font-size: 8px;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
 	.nav {
 		border: 0;
 		background: none;
@@ -448,6 +725,145 @@
 		font-size: 20px;
 		font-weight: 400;
 		margin: 8px 0 10px;
+	}
+	.upcoming-feature {
+		position: relative;
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 14px 24px;
+		margin-top: 12px;
+		padding: 16px 18px 14px 22px;
+		border: 1px solid #dfe3e8;
+		border-radius: 18px;
+		overflow: hidden;
+		background:
+			linear-gradient(105deg, color-mix(in srgb, var(--event-color) 10%, #fff), #fff 52%), #fff;
+		box-shadow: 0 1px 2px rgb(60 64 67 / 10%);
+	}
+	.upcoming-feature::before {
+		position: absolute;
+		inset: 0 auto 0 0;
+		width: 5px;
+		background: var(--event-color);
+		content: '';
+	}
+	.feature-main {
+		min-width: 0;
+	}
+	.feature-kicker {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		color: #5f6368;
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.feature-kicker span {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: var(--event-color);
+		box-shadow: 0 0 0 4px color-mix(in srgb, var(--event-color) 15%, transparent);
+	}
+	.feature-main h2 {
+		margin: 5px 0 3px;
+		font-size: clamp(19px, 2.3vw, 25px);
+		font-weight: 500;
+		letter-spacing: -0.015em;
+	}
+	.feature-main > p {
+		max-width: 760px;
+		margin: 0;
+		overflow: hidden;
+		color: #444746;
+		font-size: 12.5px;
+		line-height: 1.45;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.feature-main > p.muted {
+		color: #80868b;
+		font-style: italic;
+	}
+	.feature-details {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 7px 16px;
+		margin-top: 10px;
+	}
+	.feature-details > span {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-width: 0;
+		color: #444746;
+		font-size: 11.5px;
+	}
+	.feature-countdown {
+		display: grid;
+		align-content: center;
+		min-width: 112px;
+		padding-left: 20px;
+		border-left: 1px solid #e1e3e1;
+		text-align: right;
+	}
+	.feature-countdown span,
+	.feature-countdown small {
+		color: #5f6368;
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+	.feature-countdown strong {
+		margin: 2px 0;
+		color: var(--event-color);
+		font-size: 24px;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	.feature-queue {
+		display: grid;
+		grid-column: 1 / -1;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		gap: 8px;
+		padding-top: 11px;
+		border-top: 1px solid #edf0f2;
+	}
+	.feature-queue > div {
+		display: grid;
+		grid-template-columns: 8px minmax(0, 1fr);
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		padding: 6px 9px;
+		border-radius: 9px;
+		background: rgb(248 250 253 / 82%);
+	}
+	.queue-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+	}
+	.queue-copy {
+		display: grid;
+		min-width: 0;
+	}
+	.queue-copy strong,
+	.queue-copy small {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.queue-copy strong {
+		font-size: 10.5px;
+		font-weight: 600;
+	}
+	.queue-copy small {
+		color: #5f6368;
+		font-size: 9px;
 	}
 	.cal-layout {
 		flex: 1;
@@ -589,71 +1005,254 @@
 
 	.active-overlay {
 		background: rgba(110, 114, 121, 0.94);
+		pointer-events: none;
+	}
+	.debug-overlay {
+		z-index: 30;
+		background: rgb(32 33 36 / 82%);
+		backdrop-filter: blur(4px);
+	}
+	.debug-close {
+		position: absolute;
+		top: 18px;
+		right: 20px;
+		display: grid;
+		place-items: center;
+		width: 38px;
+		height: 38px;
+		border: 1px solid rgb(255 255 255 / 36%);
+		border-radius: 50%;
+		background: rgb(255 255 255 / 14%);
+		color: #fff;
+		font-size: 24px;
+		line-height: 1;
+		cursor: pointer;
 		pointer-events: auto;
 	}
-	.active-card {
-		width: min(760px, calc(100vw - 40px));
-		background: rgba(246, 247, 248, 0.97);
-		border-radius: 18px;
-		padding: 20px 24px;
-		color: #202124;
-	}
-	.active-card h3 {
-		margin: 6px 0 12px;
-		font-size: 30px;
+	.debug-mode {
+		justify-self: center;
+		margin-bottom: 12px;
+		padding: 5px 9px;
+		border-radius: 999px;
+		background: #fef7e0;
+		color: #7a4f01;
+		font-size: 9px;
 		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
 	}
-	.active-card .left {
-		font-size: 20px;
-		font-weight: 600;
+	.clock-event-card {
+		display: grid;
+		justify-items: center;
+		width: min(520px, calc(100vw - 40px));
+		padding: 28px 28px 26px;
+		border: 1px solid rgb(255 255 255 / 38%);
+		border-radius: 24px;
+		background: rgb(248 250 253 / 96%);
+		color: #202124;
+		box-shadow: 0 18px 60px rgb(32 33 36 / 24%);
+		pointer-events: auto;
+		text-align: center;
+	}
+	.event-clock {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 238px;
+		height: 238px;
+		margin: 2px 0 20px;
+		border-radius: 50%;
+		background: radial-gradient(circle, #fff 0 58%, #edf3fc 59% 64%, transparent 65%);
+		box-shadow:
+			inset 0 0 0 1px #dce5f2,
+			0 12px 34px rgb(11 87 208 / 14%);
+		transition:
+			background 420ms ease,
+			box-shadow 420ms ease;
+	}
+	.event-clock::before {
+		position: absolute;
+		inset: 14px;
+		border-radius: 50%;
+		background: repeating-conic-gradient(#7b8798 0 1deg, transparent 1deg 15deg);
+		opacity: 0.34;
+		-webkit-mask: radial-gradient(transparent 0 71%, #000 72% 100%);
+		mask: radial-gradient(transparent 0 71%, #000 72% 100%);
+		content: '';
+		transition: opacity 360ms ease 80ms;
+	}
+	.event-clock svg {
+		position: absolute;
+		z-index: 1;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		padding: 8px;
+		transform: rotate(-90deg);
+		transition:
+			opacity 360ms ease,
+			transform 480ms cubic-bezier(0.2, 0.8, 0.2, 1),
+			filter 360ms ease;
+	}
+	.clock-track,
+	.clock-progress {
+		fill: none;
+		stroke-width: 4;
+	}
+	.clock-track {
+		stroke: #d6e2f3;
+	}
+	.clock-progress {
+		stroke: #0b57d0;
+		stroke-linecap: round;
+		stroke-dasharray: 301.593;
+		stroke-dashoffset: var(--ring-offset);
+		transition: stroke-dashoffset 80ms linear;
+	}
+	.event-clock.intro svg {
+		opacity: 0;
+		filter: blur(3px);
+		transform: rotate(-125deg) scale(0.76);
+	}
+	.event-clock.intro {
+		background: radial-gradient(circle, #fff 0 43%, #f2f7ff 44% 60%, transparent 61%);
+		animation: prelude-breathe 1.2s ease-in-out infinite alternate;
+	}
+	.event-clock.intro::before {
+		opacity: 0;
+	}
+	.clock-center {
+		position: relative;
+		z-index: 2;
+		display: grid;
+		width: 210px;
+		height: 210px;
+		place-items: center;
+	}
+	.event-clock.intro .clock-center {
+		box-sizing: border-box;
+		padding: 0;
+	}
+	.event-clock-copy {
+		position: absolute;
+		inset: 0;
+		display: grid;
+		place-content: center;
+		color: #202124;
+		opacity: 0;
+		transform: scale(0.88);
+		transition:
+			opacity 240ms ease,
+			transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+	.event-clock-copy.active {
+		opacity: 1;
+		transform: scale(1);
+	}
+	.intro-copy strong {
+		position: absolute;
+		bottom: 17px;
+		justify-self: center;
+	}
+	.intro-copy small {
+		position: absolute;
+		bottom: 2px;
+		justify-self: center;
+	}
+	.clock-center strong {
+		font-size: 24px;
+		font-weight: 650;
+		letter-spacing: 0.025em;
 		font-variant-numeric: tabular-nums;
 	}
-	.active-card .meta {
-		margin-top: 4px;
-		font-size: 12px;
+	.clock-center small {
+		margin-top: 5px;
 		color: #5f6368;
-	}
-	.active-card .next {
-		margin-top: 16px;
-		font-size: 11px;
-		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.6px;
-		color: #5f6368;
-	}
-	.active-card ul {
-		margin: 8px 0 0;
-		padding: 0;
-		list-style: none;
-		display: flex;
-		flex-direction: column;
-		gap: 7px;
-	}
-	.active-card li {
-		display: grid;
-		grid-template-columns: 10px 1fr auto;
-		gap: 10px;
-		align-items: center;
-		padding: 8px 10px;
-		background: #fff;
-		border-radius: 10px;
-		border: 1px solid #e1e3e1;
-	}
-	.active-card .dot {
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-	}
-	.active-card .name {
-		font-size: 13px;
+		font-size: 9px;
 		font-weight: 600;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
 	}
-	.active-card .when {
-		font-size: 12px;
+	.countdown-prelude {
+		position: absolute;
+		inset: 0;
+		width: 210px;
+		height: 210px;
+		opacity: 0;
+		filter: blur(4px);
+		transform: rotate(24deg) scale(0.7);
+		transition:
+			opacity 260ms ease,
+			filter 360ms ease,
+			transform 480ms cubic-bezier(0.4, 0, 0.2, 1);
+	}
+	.countdown-prelude.active {
+		opacity: 1;
+		filter: blur(0);
+		transform: rotate(0) scale(1);
+	}
+	.countdown-prelude:not(.active) .prelude-orbit,
+	.countdown-prelude:not(.active) .prelude-core {
+		animation-play-state: paused;
+	}
+	.prelude-orbit,
+	.prelude-core {
+		position: absolute;
+		inset: 50% auto auto 50%;
+		border-radius: 50%;
+		transform: translate(-50%, -50%);
+	}
+	.prelude-orbit {
+		border: 3px solid transparent;
+	}
+	.orbit-outer {
+		width: 124px;
+		height: 124px;
+		border-top-color: #0b57d0;
+		border-right-color: #a8c7fa;
+		box-shadow: 0 0 18px rgb(11 87 208 / 12%);
+		animation: prelude-orbit 1.15s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+	}
+	.orbit-middle {
+		width: 88px;
+		height: 88px;
+		border-right-color: #7c4dff;
+		border-bottom-color: #d7c5ff;
+		animation: prelude-orbit-reverse 0.82s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
+	}
+	.orbit-inner {
+		width: 54px;
+		height: 54px;
+		border-top-color: #00a6a6;
+		border-left-color: #9de4df;
+		animation: prelude-orbit 0.62s linear infinite;
+	}
+	.prelude-core {
+		display: grid;
+		width: 25px;
+		height: 25px;
+		place-items: center;
+		background: #0b57d0;
+		box-shadow:
+			0 0 0 8px rgb(11 87 208 / 10%),
+			0 0 24px rgb(11 87 208 / 38%);
+		animation: prelude-core 0.9s ease-in-out infinite alternate;
+	}
+	.prelude-core i {
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background: #fff;
+	}
+	.clock-event-card h3 {
+		margin: 7px 0 5px;
+		font-size: 28px;
+		font-weight: 600;
+	}
+	.clock-event-card p {
+		margin: 0;
 		color: #5f6368;
+		font-size: 12px;
 	}
 	@keyframes cell-enter {
 		from {
@@ -671,12 +1270,49 @@
 			transform: scale(0.75);
 		}
 	}
+	@keyframes prelude-orbit {
+		from {
+			transform: translate(-50%, -50%) rotate(0deg) scale(0.96);
+		}
+		to {
+			transform: translate(-50%, -50%) rotate(360deg) scale(1.04);
+		}
+	}
+	@keyframes prelude-orbit-reverse {
+		from {
+			transform: translate(-50%, -50%) rotate(360deg);
+		}
+		to {
+			transform: translate(-50%, -50%) rotate(0deg);
+		}
+	}
+	@keyframes prelude-breathe {
+		to {
+			box-shadow:
+				inset 0 0 0 1px #c8d9f0,
+				0 16px 46px rgb(11 87 208 / 24%);
+			transform: scale(1.025);
+		}
+	}
+	@keyframes prelude-core {
+		to {
+			box-shadow:
+				0 0 0 13px rgb(11 87 208 / 7%),
+				0 0 32px rgb(11 87 208 / 48%);
+			transform: translate(-50%, -50%) scale(1.12);
+		}
+	}
 	@media (prefers-reduced-motion: reduce) {
 		.cell {
 			animation: none;
 		}
 		.wrap {
 			transition: none;
+		}
+		.event-clock.intro,
+		.prelude-orbit,
+		.prelude-core {
+			animation-duration: 1.8s;
 		}
 	}
 
@@ -686,9 +1322,46 @@
 		}
 	}
 	@media (max-width: 720px) {
+		.wrap {
+			padding: 10px;
+		}
+		.upcoming-feature {
+			grid-template-columns: 1fr;
+			padding: 14px 14px 12px 18px;
+		}
+		.feature-countdown {
+			grid-row: 1;
+			justify-self: end;
+			min-width: auto;
+			padding: 0;
+			border: 0;
+		}
+		.feature-main {
+			grid-row: 1;
+			padding-right: 92px;
+		}
+		.feature-main > p {
+			white-space: normal;
+			display: -webkit-box;
+			-webkit-box-orient: vertical;
+			-webkit-line-clamp: 2;
+			line-clamp: 2;
+		}
+		.feature-queue {
+			grid-template-columns: 1fr;
+		}
 		.clock-icon,
 		.clock-copy small {
 			display: none;
+		}
+		.debug-trigger > span,
+		.debug-trigger small {
+			display: none;
+		}
+		.debug-trigger {
+			width: 38px;
+			padding: 0;
+			justify-content: center;
 		}
 		.worker-clock {
 			min-width: auto;

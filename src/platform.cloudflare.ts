@@ -184,20 +184,27 @@ async function handleWebpushMessage(batch: MessageBatch, env: Env, _ctx: Executi
 			.where(inArray(push_subscriptions.user_id, recipientIds));
 
 		for (const subscription of subscriptions) {
-			await web_push.sendNotification(
-				{
-					endpoint: subscription.endpoint,
-					keys: {
-						p256dh: subscription.p256dh,
-						auth: subscription.auth
-					}
-				},
-				JSON.stringify({
-					title: body.subject,
-					body: body.message,
-					data: body.data
-				})
-			);
+			try {
+				await web_push.sendNotification(
+					{
+						endpoint: subscription.endpoint,
+						keys: {
+							p256dh: subscription.p256dh,
+							auth: subscription.auth
+						}
+					},
+					JSON.stringify({
+						title: body.subject,
+						body: body.message,
+						data: body.data
+					})
+				);
+			} catch (err) {
+				console.error('web push send failed:', err);
+				if (err instanceof web_push.WebPushError && err.statusCode === 410) {
+					await db.delete(push_subscriptions).where(eq(push_subscriptions.id, subscription.id));
+				}
+			}
 		}
 
 		message.ack();

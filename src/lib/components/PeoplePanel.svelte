@@ -19,7 +19,7 @@
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import type { Person } from '$lib/features/tasks/types';
-	import { getWS } from '$lib/websocket.svelte';
+	import { subscribeWS } from '$lib/websocket.svelte';
 	import { onMount } from 'svelte';
 	import { Capacitor, registerPlugin } from '@capacitor/core';
 	import { LocalNotifications } from '@capacitor/local-notifications';
@@ -346,7 +346,6 @@
 	}
 
 	onMount(() => {
-		let ws: WebSocket | undefined;
 		let disposed = false;
 
 		const onMessage = (e: MessageEvent) => {
@@ -370,27 +369,23 @@
 		};
 
 		// Ask the server for the current set of people.
-		const requestPeople = () => {
+		const requestPeople = (ws: WebSocket) => {
 			try {
-				ws?.send(JSON.stringify({ type: 'online_users' }));
+				ws.send(JSON.stringify({ type: 'online_users' }));
 			} catch {
 				/* ignore */
 			}
 		};
-		void getWS()
-			.then((connectedWS) => {
-				if (disposed) return;
-				ws = connectedWS;
-				ws.addEventListener('message', onMessage);
-				requestPeople();
-			})
-			.catch(() => {
-				/* best effort */
-			});
+		const unsubscribeWS = subscribeWS({
+			open: (ws) => {
+				if (!disposed) requestPeople(ws);
+			},
+			message: onMessage
+		});
 
 		return () => {
 			disposed = true;
-			ws?.removeEventListener('message', onMessage);
+			unsubscribeWS();
 		};
 	});
 
