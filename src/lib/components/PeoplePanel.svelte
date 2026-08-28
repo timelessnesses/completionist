@@ -130,7 +130,8 @@
 		} catch {
 			/* ignore */
 		}
-		setTheme(saved);
+		theme = saved;
+		applyTheme(saved);
 		const mq = window.matchMedia('(prefers-color-scheme: dark)');
 		const onSystem = () => {
 			if (theme !== 'system') return;
@@ -468,6 +469,19 @@
 	function isNativePlatform(): boolean {
 		return Capacitor.isNativePlatform();
 	}
+
+	function showModal(node: HTMLDialogElement) {
+		node.showModal();
+		const onClose = () => (settingsOpen = false);
+		node.addEventListener('close', onClose);
+
+		return {
+			destroy() {
+				node.removeEventListener('close', onClose);
+				if (node.open) node.close();
+			}
+		};
+	}
 </script>
 
 <aside class="panel">
@@ -656,8 +670,14 @@
 {/if}
 
 {#if settingsOpen}
-	<button class="scrim" aria-label="Close settings" onclick={() => (settingsOpen = false)}></button>
-	<div class="share-dialog settings-dialog" role="dialog" aria-modal="true" aria-label="Settings">
+	<dialog
+		class="share-dialog settings-dialog"
+		aria-label="Settings"
+		use:showModal
+		onclick={(event) => {
+			if (event.target === event.currentTarget) settingsOpen = false;
+		}}
+	>
 		<header class="share-head">
 			<h2>Settings</h2>
 			<button class="x" aria-label="Close" onclick={() => (settingsOpen = false)}>
@@ -742,7 +762,7 @@
 				<MdiIcon path={mdiChevronRight} size={18} />
 			</button>
 		</div>
-	</div>
+	</dialog>
 {/if}
 
 <style>
@@ -1192,6 +1212,16 @@
 		border-radius: 16px;
 		padding: 18px 20px;
 		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+	}
+	.settings-dialog {
+		margin: 0;
+		border: 0;
+		color: var(--color-foreground);
+		max-height: calc(100dvh - 32px);
+		overflow-y: auto;
+	}
+	.settings-dialog::backdrop {
+		background: rgba(15, 23, 42, 0.35);
 	}
 	.share-head {
 		display: flex;
