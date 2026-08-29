@@ -16,19 +16,34 @@ const TaskAlarm = registerPlugin<{
 		alarms: NativeAlarm[];
 		syncToken: string;
 		refreshUrl: string;
-	}): Promise<{ scheduled: number; exactAlarmAllowed: boolean; fullScreenAllowed: boolean }>;
+	}): Promise<{
+		scheduled: number;
+		notificationsAllowed: boolean;
+		exactAlarmAllowed: boolean;
+		fullScreenAllowed: boolean;
+	}>;
 	openSettings(): Promise<void>;
 }>('TaskAlarm');
 
 let syncInFlight: Promise<void> | null = null;
+let requestedSyncVersion = 0;
 
 export function syncNativeTaskAlarms(): Promise<void> {
 	if (!Capacitor.isNativePlatform()) return Promise.resolve();
+	requestedSyncVersion += 1;
 	if (syncInFlight) return syncInFlight;
-	syncInFlight = sync().finally(() => {
+	syncInFlight = syncUntilCurrent().finally(() => {
 		syncInFlight = null;
 	});
 	return syncInFlight;
+}
+
+async function syncUntilCurrent() {
+	let completedVersion: number;
+	do {
+		completedVersion = requestedSyncVersion;
+		await sync();
+	} while (completedVersion !== requestedSyncVersion);
 }
 
 export async function openNativeAlarmSettings(): Promise<void> {
@@ -49,6 +64,16 @@ async function sync() {
 		syncToken: payload.sync_token,
 		refreshUrl: new URL(payload.refresh_url, window.location.origin).href
 	});
+	console.info('Native task alarms synchronized:', {
+		available: payload.alarms.length,
+		scheduled: result.scheduled,
+		notificationsAllowed: result.notificationsAllowed,
+		exactAlarmAllowed: result.exactAlarmAllowed,
+		fullScreenAllowed: result.fullScreenAllowed
+	});
+	if (!result.notificationsAllowed) {
+		console.warn('Task alarm notifications are disabled; Android cannot display the alarm.');
+	}
 	if (!result.exactAlarmAllowed) {
 		console.warn('Exact alarm access is disabled; Android may deliver task alarms late.');
 	}
