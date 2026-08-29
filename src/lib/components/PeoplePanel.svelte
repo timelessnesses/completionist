@@ -15,7 +15,8 @@
 		mdiSend,
 		mdiPaperclip,
 		mdiDownloadOutline,
-		mdiMessageTextOutline
+		mdiMessageTextOutline,
+		mdiAlarm
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import type { Person } from '$lib/features/tasks/types';
@@ -32,6 +33,7 @@
 	import { notificationPath } from '$lib/notification-links';
 	import favicon from '$lib/assets/favicon.svg';
 	import { setIcon } from '$lib/nativePlugin';
+	import { openNativeAlarmSettings } from '$lib/task-alarms';
 
 	let {
 		isOwner = false,
@@ -751,6 +753,17 @@
 				</span>
 				<MdiIcon path={mdiChevronRight} size={18} />
 			</button>
+
+			{#if isNativePlatform()}
+				<button class="setting-action" onclick={openNativeAlarmSettings}>
+					<span class="setting-ic"><MdiIcon path={mdiAlarm} size={20} /></span>
+					<span class="setting-text">
+						<span class="setting-title">Task alarm access</span>
+						<span class="setting-sub">Allow exact timing and full-screen alarm alerts</span>
+					</span>
+					<MdiIcon path={mdiChevronRight} size={18} />
+				</button>
+			{/if}
 
 			<!-- Logout -->
 			<button class="setting-action danger" onclick={logout}>

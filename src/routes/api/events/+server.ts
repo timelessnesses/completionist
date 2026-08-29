@@ -4,12 +4,13 @@ import {
 	task_assignee,
 	task_assigned_tags,
 	task_dependency,
+	task_reminder,
 	task_tag,
 	user as userTable
 } from '$lib/server/db/schema.js';
 import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
-import type { Color } from '$lib/server/db/schema.js';
+import type { Color, ReminderUnit } from '$lib/server/db/schema.js';
 import { buildTaskNotificationEnvelope } from '$lib/server/task-fanout';
 import { recordAdminEventAction } from '$lib/server/admin-audit';
 
@@ -26,11 +27,19 @@ type CreateBody = {
 	owner_id?: string;
 	assignee_ids?: string[];
 	dependency_ids?: string[];
+	reminders?: ReminderBody[];
 	tags?: Array<{
 		id?: string;
 		tag: string;
 		color?: Color;
 	}>;
+};
+
+type ReminderBody = {
+	lead_value: number;
+	lead_unit: ReminderUnit;
+	repeat_value?: number | null;
+	repeat_unit?: ReminderUnit | null;
 };
 
 type UpdateBody = Partial<CreateBody>;
@@ -62,6 +71,7 @@ export const POST = async ({ request, platform, locals }) => {
 	}
 	await assertUserExists(db, ownerId);
 	const dependencyIds = normalizeDependencyIds(body.dependency_ids);
+	const reminders = normalizeReminders(body.reminders);
 	await assertDependencyTargetsExist(db, dependencyIds);
 	const inserted = await db
 		.insert(task)
@@ -95,6 +105,11 @@ export const POST = async ({ request, platform, locals }) => {
 
 	if (dependencyIds.length) {
 		await insertDependencyLinks(db, created.id, dependencyIds);
+	}
+	if (reminders?.length) {
+		await db
+			.insert(task_reminder)
+			.values(reminders.map((reminder) => ({ task_id: created.id, ...reminder })));
 	}
 
 	if (body.tags?.length) {
@@ -190,6 +205,7 @@ export const PUT = async ({ request, platform, locals, url }) => {
 		: null;
 	const dependencyIds =
 		body.dependency_ids === undefined ? undefined : normalizeDependencyIds(body.dependency_ids);
+	const reminders = body.reminders === undefined ? undefined : normalizeReminders(body.reminders);
 	if (dependencyIds !== undefined) {
 		await assertAcyclicDependencyChange(db, id, dependencyIds);
 	}
@@ -219,7 +235,10 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	}
 
 	const hasRelationUpdates =
-		body.assignee_ids !== undefined || dependencyIds !== undefined || body.tags !== undefined;
+		body.assignee_ids !== undefined ||
+		dependencyIds !== undefined ||
+		body.tags !== undefined ||
+		reminders !== undefined;
 	if (Object.keys(updates).length === 0 && !hasRelationUpdates) {
 		return json(existing, { status: 200 });
 	}
@@ -242,6 +261,18 @@ export const PUT = async ({ request, platform, locals, url }) => {
 
 	if (dependencyIds !== undefined) {
 		await replaceDependencyLinks(db, id, dependencyIds);
+	}
+
+	if (reminders !== undefined) {
+		const removeExisting = db.delete(task_reminder).where(eq(task_reminder.task_id, id));
+		if (reminders.length) {
+			await db.batch([
+				removeExisting,
+				db.insert(task_reminder).values(reminders.map((reminder) => ({ task_id: id, ...reminder })))
+			]);
+		} else {
+			await removeExisting;
+		}
 	}
 
 	if (body.tags !== undefined) {
@@ -313,6 +344,59 @@ function normalizeDependencyIds(value: unknown): string[] {
 		throw svelteError(400, 'dependency_ids must be an array of task IDs');
 	}
 	return [...new Set(value.map((id) => id.trim()).filter(Boolean))];
+}
+
+const REMINDER_UNITS = new Set<ReminderUnit>(['hour', 'day', 'week', 'month']);
+
+function normalizeReminders(value: ReminderBody[] | undefined) {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) throw svelteError(400, 'reminders must be an array');
+	if (value.length > 20) throw svelteError(400, 'An event can have at most 20 reminders');
+	const normalized = value.map(normalizeReminder);
+	const keys = new Set(
+		normalized.map((reminder) =>
+			[
+				reminder.lead_value,
+				reminder.lead_unit,
+				reminder.repeat_value ?? '',
+				reminder.repeat_unit ?? ''
+			].join(':')
+		)
+	);
+	if (keys.size !== normalized.length) {
+		throw svelteError(400, 'Duplicate reminder rules are not allowed');
+	}
+	return normalized;
+}
+
+function normalizeReminder(value: ReminderBody) {
+	if (!value || typeof value !== 'object') throw svelteError(400, 'Invalid reminder rule');
+	if (!Number.isInteger(value.lead_value) || value.lead_value < 1 || value.lead_value > 1000) {
+		throw svelteError(400, 'Reminder lead value must be an integer from 1 to 1000');
+	}
+	if (!REMINDER_UNITS.has(value.lead_unit)) {
+		throw svelteError(400, 'Invalid reminder lead unit');
+	}
+	const hasRepeatValue = value.repeat_value !== null && value.repeat_value !== undefined;
+	const hasRepeatUnit = value.repeat_unit !== null && value.repeat_unit !== undefined;
+	if (hasRepeatValue !== hasRepeatUnit) {
+		throw svelteError(400, 'Reminder repeat value and unit must be provided together');
+	}
+	if (
+		hasRepeatValue &&
+		(!Number.isInteger(value.repeat_value) || value.repeat_value! < 1 || value.repeat_value! > 1000)
+	) {
+		throw svelteError(400, 'Reminder repeat value must be an integer from 1 to 1000');
+	}
+	if (hasRepeatUnit && !REMINDER_UNITS.has(value.repeat_unit!)) {
+		throw svelteError(400, 'Invalid reminder repeat unit');
+	}
+	return {
+		lead_value: value.lead_value,
+		lead_unit: value.lead_unit,
+		repeat_value: hasRepeatValue ? value.repeat_value! : null,
+		repeat_unit: hasRepeatUnit ? value.repeat_unit! : null
+	};
 }
 
 async function insertDependencyLinks(
@@ -443,6 +527,7 @@ async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) 
 		with: {
 			parentTask: true,
 			subtasks: true,
+			reminders: true,
 			assignees: {
 				with: {
 					user: true
@@ -496,6 +581,12 @@ function auditEventSnapshot(value: {
 	assignees?: Array<{ user_id: string }>;
 	dependencies?: Array<{ dependency_id: string }>;
 	tags?: Array<{ tag_id: string }>;
+	reminders?: Array<{
+		lead_value: number;
+		lead_unit: ReminderUnit;
+		repeat_value: number | null;
+		repeat_unit: ReminderUnit | null;
+	}>;
 }) {
 	return {
 		name: value.task_name,
@@ -509,7 +600,13 @@ function auditEventSnapshot(value: {
 		deletedAt: value.deleted_at ? +new Date(value.deleted_at) : null,
 		assigneeIds: value.assignees?.map((assignee) => assignee.user_id),
 		dependencyIds: value.dependencies?.map((dependency) => dependency.dependency_id),
-		tagIds: value.tags?.map((tag) => tag.tag_id)
+		tagIds: value.tags?.map((tag) => tag.tag_id),
+		reminders: value.reminders?.map((reminder) => ({
+			leadValue: reminder.lead_value,
+			leadUnit: reminder.lead_unit,
+			repeatValue: reminder.repeat_value,
+			repeatUnit: reminder.repeat_unit
+		}))
 	};
 }
 

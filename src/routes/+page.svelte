@@ -31,9 +31,9 @@
 	import { LocalNotifications } from '@capacitor/local-notifications';
 	import { PushNotifications } from '@capacitor/push-notifications';
 	import { env } from '$env/dynamic/public';
-	import { buildTaskReminderNotifications } from '$lib/task-reminders';
 	import { registerServiceWorker, requestForNotificationPermission } from '$lib/notificationStuff';
 	import { notificationPath } from '$lib/notification-links';
+	import { syncNativeTaskAlarms } from '$lib/task-alarms';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
@@ -74,8 +74,6 @@
 		dependencyIds: [],
 		tagDrafts: []
 	});
-	let reminderSyncInFlight = false;
-	let reminderPermissionReady = false;
 	let currentTime = $state(Date.now());
 
 	function closeAll() {
@@ -93,7 +91,7 @@
 				(task) =>
 					!task.completed &&
 					task.status !== 'cancelled' &&
-					+new Date(task.start_at) >= +startOfToday(currentTime) &&
+					+new Date(task.start_at) > currentTime &&
 					+new Date(task.end_at) > currentTime
 			)
 			.sort(
@@ -116,6 +114,33 @@
 	const viewerId = data.viewerId;
 	const isAdmin = data.isAdmin;
 	const viewer = $derived(users.find((u) => u.id === viewerId) ?? null);
+	const runningTasks = $derived.by(() =>
+		[...events]
+			.filter(
+				(task) =>
+					!task.completed &&
+					task.status !== 'cancelled' &&
+					+new Date(task.start_at) <= currentTime &&
+					+new Date(task.end_at) > currentTime
+			)
+			.sort(
+				(a, b) => assignmentRank(a) - assignmentRank(b) || +new Date(a.end_at) - +new Date(b.end_at)
+			)
+	);
+	const assignedTasks = $derived.by(() =>
+		viewerId
+			? [...events]
+					.filter(
+						(task) =>
+							!task.completed &&
+							task.status !== 'cancelled' &&
+							+new Date(task.start_at) > currentTime &&
+							+new Date(task.end_at) > currentTime &&
+							(task.assignees ?? []).some((assignee) => assignee.user_id === viewerId)
+					)
+					.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+			: []
+	);
 	const taskMap = $derived.by(() => new Map(events.map((task) => [task.id, task])));
 	const activeTasks = $derived.by(() =>
 		[...events]
@@ -234,15 +259,24 @@
 	function onCreated(ev: RichTask) {
 		events = upsertEvent(events, ev);
 		selectedTaskId = ev.id;
+		void syncNativeTaskAlarms().catch((error) =>
+			console.warn('Failed to sync task alarms:', error)
+		);
 	}
 
 	function onUpdated(ev: RichTask) {
 		events = upsertEvent(events, ev);
+		void syncNativeTaskAlarms().catch((error) =>
+			console.warn('Failed to sync task alarms:', error)
+		);
 	}
 
 	function onDeleted(id: string) {
 		events = events.filter((x) => x.id !== id);
 		if (selectedTaskId === id) selectedTaskId = null;
+		void syncNativeTaskAlarms().catch((error) =>
+			console.warn('Failed to sync task alarms:', error)
+		);
 	}
 
 	async function openNotificationLink(url: URL) {
@@ -308,17 +342,6 @@
 		void openNotificationLink(new URL(page.url));
 	});
 
-	$effect(() => {
-		if (!Capacitor.isNativePlatform()) return;
-		const reminderTasks = events.map((task) => ({
-			id: task.id,
-			task_name: task.task_name,
-			end_at: task.end_at,
-			completed: task.completed
-		}));
-		void syncLocalReminders(reminderTasks);
-	});
-
 	type TaskActivityItem =
 		| {
 				type: 'comment';
@@ -344,11 +367,6 @@
 			selectedTaskId =
 				activeTasks.find((task) => !task.completed)?.id ?? activeTasks[0]?.id ?? null;
 		}
-	}
-
-	function startOfToday(timestamp = Date.now()): Date {
-		const now = new Date(timestamp);
-		return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 	}
 
 	function assignmentRank(task: RichTask): number {
@@ -405,47 +423,6 @@
 		if (!viewerId) return false;
 		if (task.owner === viewerId) return true;
 		return (task.assignees ?? []).some((assignee) => assignee.user_id === viewerId);
-	}
-
-	async function syncLocalReminders(
-		reminderTasks: Array<{
-			id: string;
-			task_name: string;
-			end_at: Date | number | string;
-			completed?: Date | number | string | null;
-		}>
-	) {
-		if (!Capacitor.isNativePlatform() || reminderSyncInFlight) return;
-		reminderSyncInFlight = true;
-		try {
-			if (!reminderPermissionReady) {
-				const permission = await LocalNotifications.checkPermissions();
-				if (permission.display !== 'granted') {
-					const requested = await LocalNotifications.requestPermissions();
-					if (requested.display !== 'granted') return;
-				}
-				reminderPermissionReady = true;
-			}
-
-			const pending = await LocalNotifications.getPending();
-			const existing = pending.notifications.filter((notification) => {
-				const extra = notification.extra as { scope?: string } | undefined;
-				return extra?.scope === 'task-reminder';
-			});
-			if (existing.length > 0) {
-				await LocalNotifications.cancel({
-					notifications: existing.map((notification) => ({ id: notification.id }))
-				});
-			}
-
-			const reminders = buildTaskReminderNotifications(reminderTasks);
-
-			if (reminders.length > 0) {
-				await LocalNotifications.schedule({ notifications: reminders });
-			}
-		} finally {
-			reminderSyncInFlight = false;
-		}
 	}
 
 	function syncTaskDraft(task: RichTask | null) {
@@ -682,13 +659,30 @@
 				return;
 			}
 			if (data.type === 'shouldRefetch') {
-				invalidateAll();
+				void invalidateAll().then(() => syncNativeTaskAlarms());
 			}
 		};
 
 		const unsubscribeWS = subscribeWS({ message: onMessage });
 		(async () => {
 			if (Capacitor.isNativePlatform()) {
+				void syncNativeTaskAlarms().catch((error) =>
+					console.warn('Failed to schedule native task alarms:', error)
+				);
+				try {
+					const pending = await LocalNotifications.getPending();
+					const legacyTaskReminders = pending.notifications.filter((notification) => {
+						const extra = notification.extra as { scope?: string } | undefined;
+						return extra?.scope === 'task-reminder';
+					});
+					if (legacyTaskReminders.length) {
+						await LocalNotifications.cancel({
+							notifications: legacyTaskReminders.map(({ id }) => ({ id }))
+						});
+					}
+				} catch (error) {
+					console.warn('Failed to clear legacy local task reminders:', error);
+				}
 				pushActionHandle = await PushNotifications.addListener(
 					'pushNotificationActionPerformed',
 					(action) => {
@@ -750,7 +744,15 @@
 			<button class="close" aria-label="Close menu" onclick={closeAll}>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
-			<SideRail {events} {upcoming} late={lateTasks} onCreate={() => (createOpen = true)} />
+			<SideRail
+				{events}
+				{upcoming}
+				running={runningTasks}
+				assigned={assignedTasks}
+				late={lateTasks}
+				{currentTime}
+				onCreate={() => (createOpen = true)}
+			/>
 		</div>
 
 		<MonthView
@@ -1203,7 +1205,10 @@
 	.page {
 		display: flex;
 		flex-direction: column;
-		min-height: 100vh;
+		height: 100vh;
+		height: 100dvh;
+		min-height: 0;
+		overflow: hidden;
 		background:
 			radial-gradient(
 				circle at top left,
@@ -1221,7 +1226,7 @@
 		display: flex;
 		flex: 1;
 		min-height: 0;
-		overflow: visible;
+		overflow: hidden;
 		background: transparent;
 	}
 	.task-workbench {

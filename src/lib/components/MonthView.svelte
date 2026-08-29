@@ -281,16 +281,18 @@
 <style>
 	.main {
 		flex: 1;
+		height: 100%;
 		min-width: 0;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 		/* background: #fff; */
 		border-radius: 16px 0 0 0;
 		border-left: 1px solid #e1e3e1;
-		overflow-y: auto;
-		overflow-x: hidden;
+		overflow: hidden;
 	}
 	.toolbar {
+		flex: 0 0 auto;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
@@ -360,6 +362,7 @@
 	}
 
 	.chips {
+		flex: 0 0 auto;
 		display: flex;
 		align-items: center;
 		gap: 8px;
@@ -416,11 +419,15 @@
 	}
 
 	.grid {
-		flex: 0 0 auto;
+		flex: 1 1 0;
+		min-height: 0;
+		min-width: 0;
+		width: 100%;
 		display: grid;
 		grid-template-columns: repeat(7, 1fr);
-		grid-template-rows: 28px repeat(6, minmax(104px, 1fr));
+		grid-template-rows: 28px repeat(6, minmax(0, 1fr));
 		border-top: 1px solid #e1e3e1;
+		overflow: hidden;
 	}
 	.dow {
 		font-size: 11px;
@@ -434,6 +441,10 @@
 		border-left: 0;
 	}
 	.cell {
+		min-width: 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
 		border-left: 1px solid #e1e3e1;
 		border-top: 1px solid #e1e3e1;
 		padding: 4px 6px;
@@ -465,12 +476,16 @@
 		font-weight: 600;
 	}
 	.events {
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 		gap: 3px;
 		margin-top: 4px;
+		overflow: hidden;
 	}
 	.event {
+		flex: 0 0 auto;
 		border: 0;
 		cursor: pointer;
 		text-align: left;
@@ -513,18 +528,17 @@
 		border-bottom-right-radius: 0;
 	}
 	.more {
+		flex: 0 0 auto;
 		font-size: 10.5px;
 		color: #5f6368;
 		padding-left: 6px;
 	}
 	.week-wrap {
+		flex: 1 1 0;
 		border-top: 1px solid #e1e3e1;
 		min-height: 0;
-	}
-	.upcoming-wrap {
-		border-top: 1px solid #e1e3e1;
-		padding: 0 8px 10px;
-		overflow-x: auto;
+		display: flex;
+		overflow: hidden;
 	}
 
 	@media (max-width: 860px) {
@@ -565,7 +579,7 @@
 			flex-shrink: 0;
 		}
 		.grid {
-			grid-template-rows: 24px repeat(6, minmax(72px, 1fr));
+			grid-template-rows: 24px repeat(6, minmax(0, 1fr));
 		}
 		.dow {
 			font-size: 10px;
@@ -595,9 +609,6 @@
 		.event.cont-next {
 			margin-right: -3px;
 			padding-right: 5px;
-		}
-		.upcoming-wrap {
-			padding: 0 4px 10px;
 		}
 	}
 </style>

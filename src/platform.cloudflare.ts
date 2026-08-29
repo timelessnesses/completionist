@@ -1,9 +1,10 @@
 import { getDb } from '$lib/server/db';
 import { fcm_tokens, push_subscriptions, task, user_identities } from '$lib/server/db/schema';
-import { and, eq, gte, inArray, isNotNull, isNull, lt, ne } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import * as web_push from 'web-push';
 import { Resend } from 'resend';
 import type { TaskNotificationEnvelope } from '$lib/server/task-fanout';
+import { reminderOccurrenceInWindow, reminderRuleKey } from '$lib/features/reminders/schedule';
 export { GlobalWS } from '$lib/durable_objects/GlobalWS';
 
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -63,91 +64,70 @@ export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext
 }
 
 export async function scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-	const run =
-		controller.cron === '0 0 * * *'
-			? sendFourteenDayEmailReminders(controller.scheduledTime, env)
-			: sendEndingSoonReminders(controller.scheduledTime, env);
-	ctx.waitUntil(run);
+	ctx.waitUntil(sendConfiguredReminders(controller.scheduledTime, env));
 }
 
-async function sendEndingSoonReminders(scheduledTime: number, env: Env) {
+async function sendConfiguredReminders(scheduledTime: number, env: Env) {
 	const db = getDb(env.COMPLETIONIST_DB);
-	const from = new Date(scheduledTime);
-	const until = new Date(scheduledTime + 10 * 60_000);
-	const ending = await db.query.task.findMany({
+	// Cron runs every ten minutes. Look backward so reminders are never delivered early.
+	const from = new Date(scheduledTime - 10 * 60_000);
+	const until = new Date(scheduledTime + 1);
+	const candidates = await db.query.task.findMany({
 		where: and(
 			isNull(task.deleted_at),
 			gte(task.end_at, from),
-			lt(task.end_at, until),
 			isNull(task.completed),
 			ne(task.status, 'cancelled')
 		),
-		with: { assignees: true }
+		with: { assignees: true, reminders: true }
 	});
 
-	for (const item of ending) {
-		const key = `reminder:ending:${item.id}:${Math.floor(+item.end_at / 600_000)}`;
-		if (await env.COMPLETIONIST_KV.get(key)) continue;
-		const minutes = Math.max(1, Math.ceil((+item.end_at - scheduledTime) / 60_000));
-		const recipients = uniqueIds([item.owner, ...item.assignees.map((a) => a.user_id)]);
-		await env.COMPLETIONIST_QUEUE.send({
-			subject: `${item.task_name} ends soon`,
-			message: `This task ends in about ${minutes} minute${minutes === 1 ? '' : 's'}.`,
-			html: reminderHtml(
-				item.task_name,
-				`This task ends in about ${minutes} minute${minutes === 1 ? '' : 's'}.`
-			),
-			data: {
-				type: 'task_ending_soon',
-				task_id: item.id,
-				end_at: String(+item.end_at),
-				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
-			},
-			recipient_user_ids: recipients
-		});
-		await env.COMPLETIONIST_KV.put(key, 'sent', { expirationTtl: 86_400 });
+	for (const item of candidates) {
+		for (const reminder of item.reminders) {
+			const occurrence = reminderOccurrenceInWindow(item.end_at, reminder, from, until);
+			if (!occurrence) continue;
+			// Use the rule itself instead of its row ID so replacing reminder rows while
+			// editing an event cannot resend an otherwise unchanged occurrence.
+			const ruleKey = reminderRuleKey(reminder);
+			const key = `reminder:configured:${item.id}:${ruleKey}:${occurrence.getTime()}`;
+			if (await env.COMPLETIONIST_KV.get(key)) continue;
+			const remaining = formatRemainingTime(+item.end_at - occurrence.getTime());
+			const message =
+				remaining === 'now'
+					? `"${item.task_name}" is due now.`
+					: `"${item.task_name}" ends in about ${remaining}.`;
+			const recipients = uniqueIds([item.owner, ...item.assignees.map((a) => a.user_id)]);
+			await env.COMPLETIONIST_QUEUE.send({
+				subject: remaining === 'now' ? `${item.task_name} is due` : `Reminder: ${item.task_name}`,
+				message,
+				html: reminderHtml(item.task_name, message),
+				data: {
+					type: 'task_reminder',
+					task_id: item.id,
+					reminder_id: reminder.id,
+					end_at: String(+item.end_at),
+					reminder_at: String(occurrence.getTime()),
+					url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
+				},
+				recipient_user_ids: recipients
+			});
+			await env.COMPLETIONIST_KV.put(key, 'sent', { expirationTtl: 90 * 86_400 });
+		}
 	}
 }
 
-async function sendFourteenDayEmailReminders(scheduledTime: number, env: Env) {
-	const db = getDb(env.COMPLETIONIST_DB);
-	const bangkokNow = new Date(scheduledTime + 7 * 3_600_000);
-	const targetLocalMidnightUtc = Date.UTC(
-		bangkokNow.getUTCFullYear(),
-		bangkokNow.getUTCMonth(),
-		bangkokNow.getUTCDate() + 14,
-		-7
-	);
-	const due = await db.query.task.findMany({
-		where: and(
-			isNull(task.deleted_at),
-			gte(task.end_at, new Date(targetLocalMidnightUtc)),
-			lt(task.end_at, new Date(targetLocalMidnightUtc + 86_400_000)),
-			isNull(task.completed),
-			ne(task.status, 'cancelled')
-		),
-		with: { assignees: true }
-	});
-
-	const dateKey = bangkokNow.toISOString().slice(0, 10);
-	for (const item of due) {
-		const key = `reminder:fourteen-days:${item.id}:${dateKey}`;
-		if (await env.COMPLETIONIST_KV.get(key)) continue;
-		const message = `You have 14 days left to complete "${item.task_name}".`;
-		await env.EMAIL_QUEUE.send({
-			subject: `14 days left: ${item.task_name}`,
-			message,
-			html: reminderHtml(item.task_name, message),
-			data: {
-				type: 'task_fourteen_days',
-				task_id: item.id,
-				end_at: String(+item.end_at),
-				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
-			},
-			recipient_user_ids: uniqueIds([item.owner, ...item.assignees.map((a) => a.user_id)])
-		});
-		await env.COMPLETIONIST_KV.put(key, 'sent', { expirationTtl: 30 * 86_400 });
+function formatRemainingTime(milliseconds: number) {
+	if (milliseconds <= 0) return 'now';
+	const hours = Math.max(1, Math.round(milliseconds / 3_600_000));
+	if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'}`;
+	const days = Math.round(hours / 24);
+	if (days < 14) return `${days} day${days === 1 ? '' : 's'}`;
+	if (days < 60) {
+		const weeks = Math.round(days / 7);
+		return `${weeks} week${weeks === 1 ? '' : 's'}`;
 	}
+	const months = Math.round(days / 30.4375);
+	return `${months} month${months === 1 ? '' : 's'}`;
 }
 
 function uniqueIds(ids: string[]) {

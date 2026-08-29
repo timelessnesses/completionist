@@ -17,7 +17,7 @@
 	},
 	"upload_source_maps": true,
 	"triggers": {
-		"crons": ["*/10 * * * *", "0 0 * * *"]
+		"crons": ["*/10 * * * *"]
 	},
 	"vars": {
 		"FCM_PROJECT_ID": "completionist-6a4af"

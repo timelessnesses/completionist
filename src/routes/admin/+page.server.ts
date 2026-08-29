@@ -11,6 +11,7 @@ export const load = async ({ locals, platform }) => {
 			orderBy: desc(task.created_at),
 			with: {
 				owner_user: true,
+				reminders: true,
 				assignees: { with: { user: true } },
 				dependencies: { with: { dependency: true } },
 				tags: { with: { tag: true } }

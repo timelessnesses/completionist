@@ -1,20 +1,39 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import {
 		mdiAccountMultipleOutline,
+		mdiBellOutline,
 		mdiClose,
 		mdiDeleteOutline,
 		mdiLinkVariant,
 		mdiMagnify,
-		mdiPaperclip
+		mdiPaperclip,
+		mdiPlus
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import type { FilterTag, RichTask, UserSummary } from '$lib/features/tasks/types';
 	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
+	import { reminderRuleSummary } from '$lib/features/reminders/schedule';
+	import {
+		hasModernAndroidPicker,
+		pickModernDate,
+		pickModernTime
+	} from '$lib/modern-picker';
+	import type { ReminderUnit } from '$lib/server/db/schema';
 
 	type SelectedTag = {
 		id?: string;
 		tag: string;
 		color?: { r: number; g: number; b: number };
+	};
+
+	type ReminderDraft = {
+		key: string;
+		leadValue: number;
+		leadUnit: ReminderUnit;
+		repeatEnabled: boolean;
+		repeatValue: number;
+		repeatUnit: ReminderUnit;
 	};
 
 	type TaskActivityItem =
@@ -67,6 +86,8 @@
 	let allDay = $state(false);
 	let color = $state('#0b57d0');
 	let completed = $state(false);
+	let reminders = $state<ReminderDraft[]>([]);
+	let reminderDraftSequence = 0;
 	let tagQuery = $state('');
 	let assigneeQuery = $state('');
 	let dependencyQuery = $state('');
@@ -75,7 +96,12 @@
 	let selectedDependencyIds = $state<string[]>([]);
 	let busyAction = $state<'save' | 'delete' | null>(null);
 	let errorMsg = $state('');
+	let useModernAndroidPicker = $state(false);
 	let initializedKey = '';
+
+	onMount(() => {
+		useModernAndroidPicker = hasModernAndroidPicker();
+	});
 
 	const presetColors = ['#0b57d0', '#188038', '#b0600a', '#a50e0e', '#7c3aed', '#0b8043'];
 	const isCreate = $derived(!event);
@@ -133,6 +159,40 @@
 		return `${`${value.getHours()}`.padStart(2, '0')}:${`${value.getMinutes()}`.padStart(2, '0')}`;
 	}
 
+	async function chooseDate(target: 'start' | 'end', clickEvent: MouseEvent) {
+		if (!useModernAndroidPicker) return;
+		clickEvent.preventDefault();
+		try {
+			const value = await pickModernDate(
+				target === 'start' ? date : endDate,
+				target === 'start' ? 'Select start date' : 'Select end date'
+			);
+			if (value === null) return;
+			if (target === 'start') date = value;
+			else endDate = value;
+		} catch (error) {
+			console.error('Could not open Android date picker', error);
+			errorMsg = 'Could not open the date picker.';
+		}
+	}
+
+	async function chooseTime(target: 'start' | 'end', clickEvent: MouseEvent) {
+		if (!useModernAndroidPicker) return;
+		clickEvent.preventDefault();
+		try {
+			const value = await pickModernTime(
+				target === 'start' ? startTime : endTime,
+				target === 'start' ? 'Select start time' : 'Select end time'
+			);
+			if (value === null) return;
+			if (target === 'start') startTime = value;
+			else endTime = value;
+		} catch (error) {
+			console.error('Could not open Android time picker', error);
+			errorMsg = 'Could not open the time picker.';
+		}
+	}
+
 	function resetCreateForm() {
 		const today = todayStr();
 		title = '';
@@ -144,6 +204,7 @@
 		allDay = false;
 		color = '#0b57d0';
 		completed = false;
+		reminders = [];
 		selectedTags = [];
 		selectedAssigneeIds = [];
 		selectedDependencyIds = [];
@@ -162,6 +223,16 @@
 		allDay = !!value.all_day;
 		color = colorToHex(value.color);
 		completed = !!value.completed;
+		reminders = (value.reminders ?? []).map((reminder) =>
+			createReminderDraft({
+				key: reminder.id,
+				leadValue: reminder.lead_value,
+				leadUnit: reminder.lead_unit,
+				repeatEnabled: !!(reminder.repeat_value && reminder.repeat_unit),
+				repeatValue: reminder.repeat_value ?? 1,
+				repeatUnit: reminder.repeat_unit ?? 'day'
+			})
+		);
 		selectedTags = (value.tags ?? [])
 			.filter((link) => !!link.tag)
 			.map((link) => ({ id: link.tag!.id, tag: link.tag!.tag, color: link.tag!.color }));
@@ -178,6 +249,26 @@
 		dependencyQuery = '';
 		errorMsg = '';
 		busyAction = null;
+	}
+
+	function createReminderDraft(initial: Partial<ReminderDraft> = {}): ReminderDraft {
+		return {
+			key: initial.key ?? `reminder-${++reminderDraftSequence}`,
+			leadValue: initial.leadValue ?? 1,
+			leadUnit: initial.leadUnit ?? 'day',
+			repeatEnabled: initial.repeatEnabled ?? false,
+			repeatValue: initial.repeatValue ?? 1,
+			repeatUnit: initial.repeatUnit ?? 'day'
+		};
+	}
+
+	function addReminder() {
+		if (reminders.length >= 20) return;
+		reminders = [...reminders, createReminderDraft()];
+	}
+
+	function removeReminder(key: string) {
+		reminders = reminders.filter((reminder) => reminder.key !== key);
 	}
 
 	function close() {
@@ -272,6 +363,25 @@
 			errorMsg = 'End must be after start.';
 			return;
 		}
+		for (const [index, reminder] of reminders.entries()) {
+			if (
+				!Number.isInteger(reminder.leadValue) ||
+				reminder.leadValue < 1 ||
+				reminder.leadValue > 1000
+			) {
+				errorMsg = `Reminder ${index + 1} lead time must be between 1 and 1000.`;
+				return;
+			}
+			if (
+				reminder.repeatEnabled &&
+				(!Number.isInteger(reminder.repeatValue) ||
+					reminder.repeatValue < 1 ||
+					reminder.repeatValue > 1000)
+			) {
+				errorMsg = `Reminder ${index + 1} repeat interval must be between 1 and 1000.`;
+				return;
+			}
+		}
 
 		busyAction = 'save';
 		try {
@@ -284,6 +394,12 @@
 				all_day: allDay ? 1 : 0,
 				assignee_ids: selectedAssigneeIds,
 				dependency_ids: selectedDependencyIds,
+				reminders: reminders.map((reminder) => ({
+					lead_value: reminder.leadValue,
+					lead_unit: reminder.leadUnit,
+					repeat_value: reminder.repeatEnabled ? reminder.repeatValue : null,
+					repeat_unit: reminder.repeatEnabled ? reminder.repeatUnit : null
+				})),
 				tags: selectedTags.map((tag) => ({ id: tag.id, tag: tag.tag, color: tag.color })),
 				...(event
 					? { completed: completed ? Date.now() : null }
@@ -427,6 +543,8 @@
 						><span class="lbl">Start date</span><input
 							type="date"
 							bind:value={date}
+							readonly={useModernAndroidPicker}
+							onclick={(clickEvent) => chooseDate('start', clickEvent)}
 							required
 						/></label
 					>
@@ -435,6 +553,8 @@
 							><span class="lbl">Start time</span><input
 								type="time"
 								bind:value={startTime}
+								readonly={useModernAndroidPicker}
+								onclick={(clickEvent) => chooseTime('start', clickEvent)}
 							/></label
 						>
 					{/if}
@@ -444,15 +564,112 @@
 						><span class="lbl">End date</span><input
 							type="date"
 							bind:value={endDate}
+							readonly={useModernAndroidPicker}
+							onclick={(clickEvent) => chooseDate('end', clickEvent)}
 							required
 						/></label
 					>
 					{#if !allDay}
 						<label class="field"
-							><span class="lbl">End time</span><input type="time" bind:value={endTime} /></label
+							><span class="lbl">End time</span><input
+								type="time"
+								bind:value={endTime}
+								readonly={useModernAndroidPicker}
+								onclick={(clickEvent) => chooseTime('end', clickEvent)}
+							/></label
 						>
 					{/if}
 				</div>
+
+				<section class="reminder-card" class:enabled={reminders.length > 0}>
+					<div class="reminder-heading">
+						<span class="reminder-icon"><MdiIcon path={mdiBellOutline} size={18} /></span>
+						<div>
+							<strong>Event reminders</strong>
+							<span>Notify the owner and assignees through their enabled channels.</span>
+						</div>
+						<button
+							type="button"
+							class="add-reminder"
+							onclick={addReminder}
+							disabled={reminders.length >= 20}
+						>
+							<MdiIcon path={mdiPlus} size={15} /> Add
+						</button>
+					</div>
+					{#if reminders.length}
+						<div class="reminder-list">
+							{#each reminders as reminder, index (reminder.key)}
+								<article class="reminder-rule">
+									<div class="reminder-rule-head">
+										<span>Reminder {index + 1}</span>
+										<button
+											type="button"
+											class="remove-reminder"
+											aria-label={`Remove reminder ${index + 1}`}
+											onclick={() => removeReminder(reminder.key)}
+										>
+											<MdiIcon path={mdiDeleteOutline} size={15} />
+										</button>
+									</div>
+									<div class="reminder-controls">
+										<span class="reminder-sentence">Notify me</span>
+										<input
+											class="number-input"
+											type="number"
+											min="1"
+											max="1000"
+											step="1"
+											bind:value={reminder.leadValue}
+											aria-label={`Reminder ${index + 1} lead value`}
+										/>
+										<select
+											bind:value={reminder.leadUnit}
+											aria-label={`Reminder ${index + 1} lead unit`}
+										>
+											<option value="hour">hour(s)</option>
+											<option value="day">day(s)</option>
+											<option value="week">week(s)</option>
+											<option value="month">month(s)</option>
+										</select>
+										<span class="reminder-sentence">before it ends</span>
+									</div>
+									<label class="repeat-toggle row">
+										<input type="checkbox" bind:checked={reminder.repeatEnabled} />
+										<span>Repeat until the event ends</span>
+									</label>
+									{#if reminder.repeatEnabled}
+										<div class="reminder-controls repeat-controls">
+											<span class="reminder-sentence">Every</span>
+											<input
+												class="number-input"
+												type="number"
+												min="1"
+												max="1000"
+												step="1"
+												bind:value={reminder.repeatValue}
+												aria-label={`Reminder ${index + 1} repeat value`}
+											/>
+											<select
+												bind:value={reminder.repeatUnit}
+												aria-label={`Reminder ${index + 1} repeat unit`}
+											>
+												<option value="hour">hour(s)</option>
+												<option value="day">day(s)</option>
+												<option value="week">week(s)</option>
+												<option value="month">month(s)</option>
+											</select>
+										</div>
+									{/if}
+								</article>
+							{/each}
+						</div>
+					{:else}
+						<button type="button" class="empty-reminders" onclick={addReminder}>
+							<MdiIcon path={mdiPlus} size={16} /> Add your first reminder
+						</button>
+					{/if}
+				</section>
 
 				<label class="field">
 					<span class="lbl">Description</span>
@@ -633,6 +850,16 @@
 				{#if event.description}<p class="desc">{event.description}</p>{:else}<p class="desc mute">
 						No description
 					</p>{/if}
+				{#if event.reminders?.length}
+					<div class="read-reminders">
+						{#each event.reminders as reminder (reminder.id)}
+							<div class="read-reminder">
+								<MdiIcon path={mdiBellOutline} size={16} />
+								<span>{reminderRuleSummary(reminder)}</span>
+							</div>
+						{/each}
+					</div>
+				{/if}
 				{#if (event.tags ?? []).length}
 					<div class="selected-tags">
 						{#each event.tags ?? [] as link (link.tag_id)}
@@ -692,6 +919,166 @@
 		border: 1px solid var(--color-border);
 		border-radius: 14px;
 		background: color-mix(in oklch, var(--color-muted) 55%, transparent);
+	}
+	.reminder-card {
+		display: grid;
+		gap: 12px;
+		padding: 13px 14px;
+		border: 1px solid var(--color-border);
+		border-radius: 14px;
+		background: color-mix(in oklch, var(--color-muted) 45%, transparent);
+		transition:
+			border-color 160ms ease,
+			background 160ms ease;
+	}
+	.reminder-card.enabled {
+		border-color: color-mix(in oklch, var(--color-primary) 45%, var(--color-border));
+		background: color-mix(in oklch, var(--color-primary-muted) 42%, var(--color-background));
+	}
+	.reminder-heading {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: center;
+		gap: 11px;
+	}
+	.reminder-heading div {
+		display: grid;
+		gap: 2px;
+	}
+	.reminder-heading strong {
+		font-size: 13px;
+		font-weight: 600;
+	}
+	.reminder-heading div span {
+		color: var(--color-muted-foreground);
+		font-size: 11px;
+		line-height: 1.35;
+	}
+	.reminder-icon {
+		display: grid;
+		place-items: center;
+		width: 34px;
+		height: 34px;
+		border-radius: 50%;
+		background: var(--color-primary-muted);
+		color: var(--color-primary);
+	}
+	.add-reminder,
+	.empty-reminders {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 5px;
+		border: 0;
+		border-radius: 999px;
+		background: var(--color-primary-muted);
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.add-reminder {
+		padding: 7px 11px;
+	}
+	.add-reminder:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+	.empty-reminders {
+		width: 100%;
+		padding: 13px;
+		border: 1px dashed color-mix(in oklch, var(--color-primary) 35%, var(--color-border));
+		border-radius: 10px;
+		background: color-mix(in oklch, var(--color-background) 70%, transparent);
+	}
+	.reminder-list,
+	.read-reminders {
+		display: grid;
+		gap: 9px;
+	}
+	.reminder-rule {
+		display: grid;
+		gap: 10px;
+		padding: 11px;
+		border: 1px solid color-mix(in oklch, var(--color-primary) 24%, var(--color-border));
+		border-radius: 11px;
+		background: var(--color-background);
+		animation: reminder-in 180ms ease-out;
+	}
+	.reminder-rule-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		color: var(--color-muted-foreground);
+		font-size: 10px;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.remove-reminder {
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border: 0;
+		border-radius: 50%;
+		background: transparent;
+		color: var(--color-muted-foreground);
+		cursor: pointer;
+	}
+	.remove-reminder:hover {
+		background: color-mix(in oklch, var(--color-danger) 10%, transparent);
+		color: var(--color-danger);
+	}
+	.reminder-controls {
+		display: grid;
+		grid-template-columns: auto 72px minmax(112px, 1fr) auto;
+		align-items: center;
+		gap: 7px;
+	}
+	.reminder-controls.repeat-controls {
+		grid-template-columns: auto 72px minmax(112px, 1fr);
+		padding-left: 24px;
+	}
+	.reminder-controls input,
+	.reminder-controls select {
+		min-width: 0;
+		width: 100%;
+		padding: 8px 9px;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		background: var(--color-background);
+		color: var(--color-foreground);
+		font: inherit;
+		font-size: 12px;
+	}
+	.reminder-sentence,
+	.repeat-toggle {
+		font-size: 12px;
+	}
+	.repeat-toggle {
+		padding-left: 24px;
+	}
+	.read-reminder {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: var(--color-primary-muted);
+		color: var(--color-primary);
+		font-size: 12px;
+	}
+	@keyframes reminder-in {
+		from {
+			opacity: 0;
+			transform: translateY(-4px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 	.selection-count {
 		color: var(--color-muted-foreground);
@@ -806,6 +1193,14 @@
 			margin: 2px auto 6px;
 			border-radius: 999px;
 			background: #c4c7c5;
+		}
+		.reminder-controls,
+		.reminder-controls.repeat-controls {
+			grid-template-columns: auto 64px 1fr;
+			padding-left: 0;
+		}
+		.reminder-controls > .reminder-sentence:last-child {
+			grid-column: 1 / -1;
 		}
 	}
 	@keyframes slide-up {

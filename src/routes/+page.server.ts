@@ -9,6 +9,7 @@ export const load = async ({ params, request, platform, locals }) => {
 		with: {
 			parentTask: true,
 			subtasks: true,
+			reminders: true,
 			assignees: {
 				with: {
 					user: true

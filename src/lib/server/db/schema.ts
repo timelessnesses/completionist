@@ -15,6 +15,8 @@ export type Color = {
 	b: number;
 };
 
+export type ReminderUnit = 'hour' | 'day' | 'week' | 'month';
+
 const colorHexType = customType<{
 	data: Color;
 	driverData: string;
@@ -139,6 +141,26 @@ export const task_assignee = sqliteTable(
 	(table) => {
 		return [primaryKey({ columns: [table.task_id, table.user_id] })];
 	}
+);
+
+export const task_reminder = sqliteTable(
+	'task_reminder',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		task_id: text('task_id')
+			.references((): AnySQLiteColumn => task.id)
+			.notNull(),
+		lead_value: integer('lead_value').notNull(),
+		lead_unit: text('lead_unit').notNull().$type<ReminderUnit>(),
+		repeat_value: integer('repeat_value'),
+		repeat_unit: text('repeat_unit').$type<ReminderUnit>(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [index('task_reminder_task_idx').on(table.task_id)]
 );
 
 export const task_dependency = sqliteTable(
@@ -364,12 +386,20 @@ export const taskRelations = relations(task, ({ one, many }) => ({
 	assignees: many(task_assignee),
 	comments: many(task_comment),
 	attachments: many(task_attachment),
+	reminders: many(task_reminder),
 	issues: many(issues),
 	tags: many(task_assigned_tags),
 
 	// task_dependency has two FKs pointing at task, so each needs its own relationName
 	dependencies: many(task_dependency, { relationName: 'task_dependency_task' }),
 	dependents: many(task_dependency, { relationName: 'task_dependency_dependency' })
+}));
+
+export const taskReminderRelations = relations(task_reminder, ({ one }) => ({
+	task: one(task, {
+		fields: [task_reminder.task_id],
+		references: [task.id]
+	})
 }));
 
 export const userRelations = relations(user, ({ many }) => ({

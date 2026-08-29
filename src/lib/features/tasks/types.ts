@@ -6,6 +6,7 @@ import type {
 	task_attachment,
 	task_comment,
 	task_dependency,
+	task_reminder,
 	task_tag,
 	user
 } from '$lib/server/db/schema';
@@ -32,6 +33,7 @@ export type TaskDependencyLink = InferSelectModel<typeof task_dependency> & {
 export type TaskCommentEntry = InferSelectModel<typeof task_comment> & { user?: UserSummary };
 export type TaskAttachmentEntry = InferSelectModel<typeof task_attachment> & { user?: UserSummary };
 export type TaskTagLink = InferSelectModel<typeof task_assigned_tags> & { tag?: FilterTag };
+export type TaskReminder = InferSelectModel<typeof task_reminder>;
 
 export type RichTask = CalendarEvent & {
 	parentTask?: CalendarEvent | null;
@@ -41,5 +43,6 @@ export type RichTask = CalendarEvent & {
 	dependents?: TaskDependencyLink[];
 	comments?: TaskCommentEntry[];
 	attachments?: TaskAttachmentEntry[];
+	reminders?: TaskReminder[];
 	tags?: TaskTagLink[];
 };

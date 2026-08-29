@@ -8,12 +8,6 @@ type FilePresignBody = {
 	expiresIn?: number;
 };
 
-type R2Env = Env & {
-	CLOUDFLARE_ACCOUNT_ID: string;
-	CLOUDFLARE_ACCESS_TOKEN: string;
-	CLOUDFLARE_SECRET_ACCESS_TOKEN: string;
-};
-
 const BUCKET = 'completionist-storage';
 
 export const GET = async ({ url, platform, locals }) => {
@@ -26,7 +20,7 @@ export const GET = async ({ url, platform, locals }) => {
 		throw svelteError(400, 'key is required');
 	}
 
-	const { client, env } = createClient(platform?.env as R2Env);
+	const { client, env } = createClient(platform?.env as Env);
 	const downloadUrl = await getSignedUrl(
 		client,
 		new GetObjectCommand({
@@ -65,7 +59,7 @@ export const PUT = async ({ request, platform, locals }) => {
 		throw svelteError(400, 'key is required');
 	}
 
-	const { client, env } = createClient(platform?.env as R2Env);
+	const { client, env } = createClient(platform?.env as Env);
 	const uploadUrl = await getSignedUrl(
 		client,
 		new PutObjectCommand({
@@ -88,7 +82,7 @@ export const PUT = async ({ request, platform, locals }) => {
 	);
 };
 
-function createClient(env: R2Env) {
+function createClient(env: Env) {
 	const client = new S3Client({
 		region: 'auto',
 		endpoint: `https://${env.CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
