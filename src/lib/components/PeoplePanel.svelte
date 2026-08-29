@@ -33,7 +33,7 @@
 	import { notificationPath } from '$lib/notification-links';
 	import favicon from '$lib/assets/favicon.svg';
 	import { setIcon } from '$lib/nativePlugin';
-	import { openNativeAlarmSettings } from '$lib/task-alarms';
+	import { openNativeAlarmSettings, openNativeUnusedAppSettings } from '$lib/task-alarms';
 
 	let {
 		isOwner = false,
@@ -760,6 +760,15 @@
 					<span class="setting-text">
 						<span class="setting-title">Task alarm access</span>
 						<span class="setting-sub">Allow exact timing and full-screen alarm alerts</span>
+					</span>
+					<MdiIcon path={mdiChevronRight} size={18} />
+				</button>
+
+				<button class="setting-action" onclick={openNativeUnusedAppSettings}>
+					<span class="setting-ic"><MdiIcon path={mdiAlarm} size={20} /></span>
+					<span class="setting-text">
+						<span class="setting-title">Keep app active</span>
+						<span class="setting-sub">Turn off “Pause app activity if unused” for reliable alarms</span>
 					</span>
 					<MdiIcon path={mdiChevronRight} size={18} />
 				</button>

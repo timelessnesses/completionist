@@ -23,6 +23,7 @@ const TaskAlarm = registerPlugin<{
 		fullScreenAllowed: boolean;
 	}>;
 	openSettings(): Promise<void>;
+	openUnusedAppSettings(): Promise<{ alreadyDisabled: boolean }>;
 }>('TaskAlarm');
 
 let syncInFlight: Promise<void> | null = null;
@@ -49,6 +50,11 @@ async function syncUntilCurrent() {
 export async function openNativeAlarmSettings(): Promise<void> {
 	if (!Capacitor.isNativePlatform()) return;
 	await TaskAlarm.openSettings();
+}
+
+export async function openNativeUnusedAppSettings(): Promise<void> {
+	if (!Capacitor.isNativePlatform()) return;
+	await TaskAlarm.openUnusedAppSettings();
 }
 
 async function sync() {
