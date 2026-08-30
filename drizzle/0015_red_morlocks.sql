@@ -1,0 +1,1 @@
+ALTER TABLE `user` ADD `calendar_feed_token_version` integer DEFAULT 0 NOT NULL;

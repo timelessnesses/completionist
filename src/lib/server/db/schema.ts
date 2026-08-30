@@ -98,6 +98,7 @@ export const user = sqliteTable('user', {
 	profile_picture_url: text('profile_picture_url'),
 	refresh_token: text('refresh_token'),
 	refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' }),
+	calendar_feed_token_version: integer('calendar_feed_token_version').notNull().default(0),
 	whitelisted: integer('whitelisted').$type<0 | 1>().notNull().default(0),
 	deleted_at: integer('deleted_at', { mode: 'timestamp_ms' }),
 	owner: integer('owner').$type<0 | 1>().notNull().default(0)

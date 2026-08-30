@@ -16,6 +16,7 @@ const publicRoutes = [
 	'/api/auth/logout',
 	'/api/ws',
 	'/api/task-alarms/refresh',
+	'/calendar.ics',
 	'/preview'
 ];
 

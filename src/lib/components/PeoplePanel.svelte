@@ -16,7 +16,8 @@
 		mdiPaperclip,
 		mdiDownloadOutline,
 		mdiMessageTextOutline,
-		mdiAlarm
+		mdiAlarm,
+		mdiCalendarSyncOutline
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
 	import type { Person } from '$lib/features/tasks/types';
@@ -71,6 +72,11 @@
 	let shareOpen = $state(false);
 	let settingsOpen = $state(false);
 	let copied = $state(false);
+	let calendarFeedOpen = $state(false);
+	let calendarFeedUrl = $state('');
+	let calendarFeedBusy = $state(false);
+	let calendarFeedError = $state('');
+	let calendarFeedCopied = $state(false);
 	let chatOpen = $state(false);
 	let selectedPerson = $state<Person | null>(null);
 	let chatMessages = $state<Record<string, DirectMessage[]>>({});
@@ -154,6 +160,29 @@
 	const shareUrl = $derived(
 		typeof window !== 'undefined' ? `${window.location.origin}/preview` : ''
 	);
+
+	async function loadCalendarFeed(rotate = false) {
+		calendarFeedOpen = true;
+		calendarFeedBusy = true;
+		calendarFeedError = '';
+		calendarFeedCopied = false;
+		try {
+			const response = await fetch('/api/calendar-feed', { method: rotate ? 'POST' : 'GET' });
+			if (!response.ok) throw new Error(await response.text());
+			calendarFeedUrl = ((await response.json()) as { url: string }).url;
+		} catch (error) {
+			calendarFeedError = error instanceof Error ? error.message : 'Could not create calendar URL.';
+		} finally {
+			calendarFeedBusy = false;
+		}
+	}
+
+	async function copyCalendarFeed() {
+		if (!calendarFeedUrl) return;
+		await navigator.clipboard.writeText(calendarFeedUrl);
+		calendarFeedCopied = true;
+		setTimeout(() => (calendarFeedCopied = false), 1800);
+	}
 
 	function dedupe(list: Person[]): Person[] {
 		const seen = new Set<string>();
@@ -706,6 +735,64 @@
 				</div>
 			</div>
 
+			<div class="calendar-feed-setting">
+				<button
+					class="setting-action"
+					onclick={() => {
+						if (calendarFeedOpen) {
+							calendarFeedOpen = false;
+						} else {
+							void loadCalendarFeed();
+						}
+					}}
+				>
+					<span class="setting-ic"><MdiIcon path={mdiCalendarSyncOutline} size={20} /></span>
+					<span class="setting-text">
+						<span class="setting-title">Calendar subscription</span>
+						<span class="setting-sub">Sync events with Google, Apple, or Outlook</span>
+					</span>
+					<span class:expanded={calendarFeedOpen} class="setting-chevron">
+						<MdiIcon path={mdiChevronRight} size={18} />
+					</span>
+				</button>
+
+				{#if calendarFeedOpen}
+					<div class="calendar-feed-panel">
+						<p>Keep this private URL secret. Anyone who has it can read the calendar.</p>
+						{#if calendarFeedBusy}
+							<p class="calendar-feed-state">Creating your subscription URL…</p>
+						{:else if calendarFeedError}
+							<p class="calendar-feed-error">{calendarFeedError}</p>
+						{:else if calendarFeedUrl}
+							<div class="link-row">
+								<input
+									class="link"
+									readonly
+									value={calendarFeedUrl}
+									onclick={(event) => (event.currentTarget as HTMLInputElement).select()}
+								/>
+								<button class="copy" onclick={copyCalendarFeed}>
+									<MdiIcon path={calendarFeedCopied ? mdiCheck : mdiContentCopy} size={16} />
+									{calendarFeedCopied ? 'Copied' : 'Copy'}
+								</button>
+							</div>
+							<div class="calendar-feed-actions">
+								<a href={calendarFeedUrl.replace(/^https?:/, 'webcal:')}>Open in calendar app</a>
+								<button
+									onclick={() => {
+										if (
+											confirm('Rotate the URL? Existing calendar subscriptions will stop syncing.')
+										) {
+											void loadCalendarFeed(true);
+										}
+									}}>Rotate URL</button
+								>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
 			<!-- Admin link (owners only) -->
 			{#if isOwner}
 				<a class="setting-action" href="/admin/">
@@ -767,7 +854,9 @@
 					<span class="setting-ic"><MdiIcon path={mdiAlarm} size={20} /></span>
 					<span class="setting-text">
 						<span class="setting-title">Keep app active</span>
-						<span class="setting-sub">Turn off “Pause app activity if unused” for reliable alarms</span>
+						<span class="setting-sub"
+							>Turn off “Pause app activity if unused” for reliable alarms</span
+						>
 					</span>
 					<MdiIcon path={mdiChevronRight} size={18} />
 				</button>
@@ -919,6 +1008,59 @@
 	}
 	.setting-action:hover {
 		background: var(--color-muted);
+	}
+	.calendar-feed-setting {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.calendar-feed-setting > .setting-action {
+		width: 100%;
+	}
+	.setting-chevron {
+		display: grid;
+		place-items: center;
+		transition: transform 160ms ease;
+	}
+	.setting-chevron.expanded {
+		transform: rotate(90deg);
+	}
+	.calendar-feed-panel {
+		border: 1px solid var(--color-border);
+		border-radius: 12px;
+		background: var(--color-card);
+		padding: 12px;
+	}
+	.calendar-feed-panel p {
+		margin: 0 0 10px;
+		font-size: 11.5px;
+		line-height: 1.45;
+		color: var(--color-muted-foreground);
+	}
+	.calendar-feed-panel .calendar-feed-state {
+		margin-bottom: 0;
+	}
+	.calendar-feed-panel .calendar-feed-error {
+		margin-bottom: 0;
+		color: var(--color-danger);
+	}
+	.calendar-feed-actions {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin-top: 10px;
+		font-size: 12px;
+	}
+	.calendar-feed-actions a,
+	.calendar-feed-actions button {
+		border: 0;
+		background: none;
+		padding: 0;
+		color: var(--color-primary);
+		font: inherit;
+		text-decoration: none;
+		cursor: pointer;
 	}
 	.setting-ic {
 		width: 36px;
