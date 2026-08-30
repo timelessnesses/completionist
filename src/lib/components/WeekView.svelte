@@ -49,7 +49,6 @@
 	const eventsByDay = $derived.by(() => {
 		const map = new Map<string, RichTask[]>();
 		for (const ev of events) {
-			if (ev.completed) continue;
 			const start = new Date(ev.start_at);
 			const end = new Date(ev.end_at);
 			const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -89,37 +88,70 @@
 
 	/** Timed events with a vertical position (as a % of the 24-hour column). */
 	function timedEvents(key: string) {
-		return (eventsByDay.get(key) ?? []).flatMap((ev) => {
-			if (ev.completed) return [];
-			if (ev.all_day) return [];
-			const day = days.find((candidate) => toKey(candidate) === key);
-			if (!day) return [];
-			const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
-			const dayEnd = dayStart + MINUTES_PER_DAY * MS_PER_MINUTE;
-			const eventStart = +new Date(ev.start_at);
-			const eventEnd = +new Date(ev.end_at);
-			const visibleStart = Math.max(eventStart, dayStart);
-			const visibleEnd = Math.min(Math.max(eventEnd, visibleStart), dayEnd);
-			const d = new Date(visibleStart);
-			const startMinutes =
-				d.getHours() * 60 +
-				d.getMinutes() +
-				d.getSeconds() / 60 +
-				d.getMilliseconds() / MS_PER_MINUTE;
-			const durationMinutes = Math.max(1, (visibleEnd - visibleStart) / MS_PER_MINUTE);
-			return [
-				{
-					ev,
-					top: (startMinutes / 60) * hourPx,
-					height: Math.max(8, (durationMinutes / 60) * hourPx)
-				}
-			];
-		});
+		const positioned = (eventsByDay.get(key) ?? [])
+			.flatMap((ev) => {
+				if (ev.all_day) return [];
+				const day = days.find((candidate) => toKey(candidate) === key);
+				if (!day) return [];
+				const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+				const dayEnd = dayStart + MINUTES_PER_DAY * MS_PER_MINUTE;
+				const eventStart = +new Date(ev.start_at);
+				const eventEnd = +new Date(ev.end_at);
+				const visibleStart = Math.max(eventStart, dayStart);
+				const visibleEnd = Math.min(Math.max(eventEnd, visibleStart), dayEnd);
+				const d = new Date(visibleStart);
+				const startMinutes =
+					d.getHours() * 60 +
+					d.getMinutes() +
+					d.getSeconds() / 60 +
+					d.getMilliseconds() / MS_PER_MINUTE;
+				const durationMinutes = Math.max(1, (visibleEnd - visibleStart) / MS_PER_MINUTE);
+				return [
+					{
+						ev,
+						start: visibleStart,
+						end: visibleEnd,
+						top: (startMinutes / 60) * hourPx,
+						height: Math.max(8, (durationMinutes / 60) * hourPx),
+						lane: 0,
+						laneCount: 1
+					}
+				];
+			})
+			.sort((a, b) => a.start - b.start || a.end - b.end);
+
+		let cluster: typeof positioned = [];
+		let clusterEnd = Number.NEGATIVE_INFINITY;
+		const layOutCluster = () => {
+			if (!cluster.length) return;
+			const laneEnds: number[] = [];
+			for (const event of cluster) {
+				let lane = laneEnds.findIndex((end) => end <= event.start);
+				if (lane < 0) lane = laneEnds.length;
+				laneEnds[lane] = event.end;
+				event.lane = lane;
+			}
+			for (const event of cluster) event.laneCount = laneEnds.length;
+			cluster = [];
+		};
+
+		for (const event of positioned) {
+			if (cluster.length && event.start >= clusterEnd) layOutCluster();
+			cluster.push(event);
+			clusterEnd = cluster.length === 1 ? event.end : Math.max(clusterEnd, event.end);
+		}
+		layOutCluster();
+
+		return positioned.map((event) => ({
+			...event,
+			left: (event.lane / event.laneCount) * 100,
+			width: 100 / event.laneCount
+		}));
 	}
 
 	/** All-day events, rendered in the all-day strip like Google Calendar. */
 	function allDayEvents(key: string) {
-		return (eventsByDay.get(key) ?? []).filter((ev) => !!ev.all_day && !ev.completed);
+		return (eventsByDay.get(key) ?? []).filter((ev) => !!ev.all_day);
 	}
 
 	function timeLabel(ev: RichTask): string {
@@ -258,8 +290,13 @@
 					{#each allDayEvents(toKey(d)) as ev (ev.id)}
 						<button
 							class="ad-ev"
-							style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
-							style:color={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`}
+							class:completed={!!ev.completed}
+							style:background={ev.completed
+								? 'rgba(107, 114, 128, 0.16)'
+								: `rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
+							style:color={ev.completed
+								? 'rgb(107, 114, 128)'
+								: `rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`}
 							title={ev.task_name}
 							onclick={() => onSelectEvent?.(ev)}
 						>
@@ -305,10 +342,14 @@
 						{#each timedEvents(toKey(d)) as t (t.ev.id)}
 							<button
 								class="ev"
+								class:completed={!!t.ev.completed}
 								style:top={`${t.top}px`}
 								style:height={`${t.height}px`}
-								style:background={`rgba(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b}, 1)`}
-								style:color={`rgb(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b})`}
+								style:left={`calc(${t.left}% + 2px)`}
+								style:width={`calc(${t.width}% - 4px)`}
+								style:background={t.ev.completed
+									? 'rgb(156, 163, 175)'
+									: `rgb(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b})`}
 								title={t.ev.task_name}
 								onclick={() => onSelectEvent?.(t.ev)}
 							>
@@ -425,6 +466,12 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+	.ad-ev.completed,
+	.ev.completed {
+		filter: grayscale(1);
+		opacity: 0.68;
+		text-decoration: line-through;
+	}
 	.labels .l-row {
 		height: var(--hour-h);
 		box-sizing: border-box;
@@ -506,8 +553,6 @@
 	}
 	.ev {
 		position: absolute;
-		left: 2px;
-		right: 2px;
 		min-height: 8px;
 		display: flex;
 		align-items: center;
@@ -572,8 +617,6 @@
 			border-top-width: 1px;
 		}
 		.ev {
-			left: 1px;
-			right: 1px;
 			padding: 2px 3px;
 			border-radius: 4px;
 			gap: 4px;

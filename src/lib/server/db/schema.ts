@@ -98,7 +98,17 @@ export const user = sqliteTable('user', {
 	profile_picture_url: text('profile_picture_url'),
 	refresh_token: text('refresh_token'),
 	refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' }),
+	whitelisted: integer('whitelisted').$type<0 | 1>().notNull().default(0),
+	deleted_at: integer('deleted_at', { mode: 'timestamp_ms' }),
 	owner: integer('owner').$type<0 | 1>().notNull().default(0)
+});
+
+export const access_policy = sqliteTable('access_policy', {
+	id: integer('id').primaryKey().default(1),
+	allow_org_members: integer('allow_org_members').$type<0 | 1>().notNull().default(1),
+	updated_at: integer('updated_at', { mode: 'timestamp_ms' })
+		.notNull()
+		.$defaultFn(() => new Date())
 });
 
 export const admin_audit_log = sqliteTable(

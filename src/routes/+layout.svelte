@@ -4,7 +4,6 @@
 	import { subscribeWS } from '$lib/websocket.svelte';
 	import ApiFeedback from '$lib/components/ApiFeedback.svelte';
 	import { installApiFeedback } from '$lib/api-feedback';
-	import favicon from '$lib/assets/favicon.svg';
 
 	const builtAt = new Date(__BUILD_DATE).toLocaleString('en-TH', {
 		dateStyle: 'medium',
@@ -62,10 +61,6 @@
 		};
 	});
 </script>
-
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
 
 <div class="bg-background text-foreground grid h-dvh grid-rows-[minmax(0,1fr)_auto]">
 	<div class="min-h-0 overflow-hidden">{@render children()}</div>

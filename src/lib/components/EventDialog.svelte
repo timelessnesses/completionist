@@ -86,6 +86,7 @@
 	let allDay = $state(false);
 	let color = $state('#0b57d0');
 	let completed = $state(false);
+	let importanceValue = $state(0);
 	let reminders = $state<ReminderDraft[]>([]);
 	let reminderDraftSequence = 0;
 	let tagQuery = $state('');
@@ -204,6 +205,7 @@
 		allDay = false;
 		color = '#0b57d0';
 		completed = false;
+		importanceValue = 0;
 		reminders = [];
 		selectedTags = [];
 		selectedAssigneeIds = [];
@@ -223,6 +225,7 @@
 		allDay = !!value.all_day;
 		color = colorToHex(value.color);
 		completed = !!value.completed;
+		importanceValue = value.importance_value;
 		reminders = (value.reminders ?? []).map((reminder) =>
 			createReminderDraft({
 				key: reminder.id,
@@ -363,6 +366,10 @@
 			errorMsg = 'End must be after start.';
 			return;
 		}
+		if (!Number.isInteger(importanceValue) || importanceValue < 0 || importanceValue > 1000) {
+			errorMsg = 'Importance must be a whole number from 0 to 1000.';
+			return;
+		}
 		for (const [index, reminder] of reminders.entries()) {
 			if (
 				!Number.isInteger(reminder.leadValue) ||
@@ -392,6 +399,7 @@
 				start_at: start.getTime(),
 				end_at: end.getTime(),
 				all_day: allDay ? 1 : 0,
+				importance_value: importanceValue,
 				assignee_ids: selectedAssigneeIds,
 				dependency_ids: selectedDependencyIds,
 				reminders: reminders.map((reminder) => ({
@@ -401,9 +409,7 @@
 					repeat_unit: reminder.repeatEnabled ? reminder.repeatUnit : null
 				})),
 				tags: selectedTags.map((tag) => ({ id: tag.id, tag: tag.tag, color: tag.color })),
-				...(event
-					? { completed: completed ? Date.now() : null }
-					: { status: 'todo' as const, importance_value: 0 })
+				...(event ? { completed: completed ? Date.now() : null } : { status: 'todo' as const })
 			};
 			const response = await fetch(
 				event ? `/api/events?id=${encodeURIComponent(event.id)}` : '/api/events',
@@ -704,6 +710,12 @@
 					<textarea rows="3" bind:value={description} placeholder="Add description"></textarea>
 				</label>
 
+				<label class="field">
+					<span class="lbl">Importance</span>
+					<input type="number" min="0" max="1000" step="1" bind:value={importanceValue} />
+					<small class="field-help">Higher values are shown and alarmed first.</small>
+				</label>
+
 				<div class="field">
 					<span class="lbl">Color</span>
 					<div class="color-row">
@@ -893,6 +905,7 @@
 					).toLocaleDateString()}
 					{event.all_day ? '' : timeLabel(new Date(event.end_at))}
 				</p>
+				<p class="meta">Importance: {event.importance_value}</p>
 				{#if event.description}<p class="desc">{event.description}</p>{:else}<p class="desc mute">
 						No description
 					</p>{/if}
@@ -956,6 +969,10 @@
 		background: var(--color-muted);
 		cursor: not-allowed;
 		opacity: 0.65;
+	}
+	.field-help {
+		color: var(--color-muted-foreground);
+		font-size: 11px;
 	}
 	.title-input {
 		border: 0;

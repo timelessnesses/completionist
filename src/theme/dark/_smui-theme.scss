@@ -14,8 +14,6 @@
 	$error: color-palette.$red-400
 );
 
-@use '@smui/common/typography/index' as typography;
-
 // Component theme styles
 @use '@smui/button/style' as button;
 @use '@smui/icon-button/style' as icon-button;
@@ -25,6 +23,7 @@
 @use '@smui/paper/style' as paper;
 @use '@smui/top-app-bar/style' as top-app-bar;
 @use '@smui/circular-progress/style' as circular-progress;
+@use '../typography';
 
 html,
 body {

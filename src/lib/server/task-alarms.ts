@@ -7,6 +7,7 @@ import {
 import { getDb } from '$lib/server/db';
 import { task } from '$lib/server/db/schema';
 import { and, eq, isNull, ne } from 'drizzle-orm';
+import { compareTaskPriority, taskPriority } from '$lib/features/tasks/priority';
 
 const TASK_START_RULE_KEY = 'task-start';
 
@@ -19,6 +20,9 @@ export type NativeTaskAlarm = {
 	occurrence_at: number;
 	end_at: number;
 	url: string;
+	importance_value: number;
+	assigned_to_user: boolean;
+	dependency_count: number;
 };
 
 export async function taskAlarmsForUser(
@@ -29,11 +33,17 @@ export async function taskAlarmsForUser(
 	const db = getDb(env.COMPLETIONIST_DB);
 	const candidates = await db.query.task.findMany({
 		where: and(isNull(task.deleted_at), isNull(task.completed), ne(task.status, 'cancelled')),
-		with: { reminders: true, assignees: true }
+		with: { reminders: true, assignees: true, dependencies: true }
 	});
 	const alarms: NativeTaskAlarm[] = [];
 	for (const item of candidates) {
 		if (item.owner !== userId && !item.assignees.some((link) => link.user_id === userId)) continue;
+		const priority = taskPriority(item, userId);
+		const priorityFields = {
+			importance_value: priority.importance,
+			assigned_to_user: priority.assignedToUser,
+			dependency_count: priority.dependencyCount
+		};
 		const startOccurrence = nextTaskStartOccurrence(item, after);
 		if (startOccurrence) {
 			alarms.push({
@@ -44,7 +54,8 @@ export async function taskAlarmsForUser(
 				description: item.description,
 				occurrence_at: startOccurrence.getTime(),
 				end_at: item.end_at.getTime(),
-				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
+				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`,
+				...priorityFields
 			});
 		}
 		for (const reminder of item.reminders) {
@@ -59,11 +70,20 @@ export async function taskAlarmsForUser(
 				description: item.description,
 				occurrence_at: occurrence.getTime(),
 				end_at: item.end_at.getTime(),
-				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
+				url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`,
+				...priorityFields
 			});
 		}
 	}
-	return alarms.sort((a, b) => a.occurrence_at - b.occurrence_at);
+	const taskById = new Map(candidates.map((item) => [item.id, item]));
+	return alarms.sort((a, b) => {
+		const aTask = taskById.get(a.task_id);
+		const bTask = taskById.get(b.task_id);
+		return (
+			(aTask && bTask ? compareTaskPriority(aTask, bTask, userId) : 0) ||
+			a.occurrence_at - b.occurrence_at
+		);
+	});
 }
 
 export async function validateTaskAlarm(
@@ -80,10 +100,16 @@ export async function validateTaskAlarm(
 			isNull(task.completed),
 			ne(task.status, 'cancelled')
 		),
-		with: { reminders: true, assignees: true }
+		with: { reminders: true, assignees: true, dependencies: true }
 	});
 	if (!item) return null;
 	if (item.owner !== userId && !item.assignees.some((link) => link.user_id === userId)) return null;
+	const priority = taskPriority(item, userId);
+	const priorityFields = {
+		importance_value: priority.importance,
+		assigned_to_user: priority.assignedToUser,
+		dependency_count: priority.dependencyCount
+	};
 	if (requested.rule_key === TASK_START_RULE_KEY) {
 		const occurrence = nextTaskStartOccurrence(item, requested.occurrence_at - 1);
 		if (!occurrence || occurrence.getTime() !== requested.occurrence_at) return null;
@@ -95,7 +121,8 @@ export async function validateTaskAlarm(
 			description: item.description,
 			occurrence_at: requested.occurrence_at,
 			end_at: item.end_at.getTime(),
-			url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
+			url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`,
+			...priorityFields
 		};
 	}
 	const reminder = item.reminders.find((rule) => reminderRuleKey(rule) === requested.rule_key);
@@ -110,7 +137,8 @@ export async function validateTaskAlarm(
 		description: item.description,
 		occurrence_at: requested.occurrence_at,
 		end_at: item.end_at.getTime(),
-		url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`
+		url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`,
+		...priorityFields
 	};
 }
 

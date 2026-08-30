@@ -3,7 +3,7 @@ import { task, task_tag } from '$lib/server/db/schema.js';
 import { lt, gte, and, isNull } from 'drizzle-orm';
 import { dev } from '$app/environment';
 
-export const load = async ({ platform, url }) => {
+export const load = async ({ platform, url, locals }) => {
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 	const tasks = await db.query.task.findMany({
 		where: and(
@@ -13,6 +13,7 @@ export const load = async ({ platform, url }) => {
 		),
 		with: {
 			assignees: { with: { user: true } },
+			dependencies: { with: { dependency: true } },
 			tags: { with: { tag: true } }
 		}
 	});
@@ -24,6 +25,7 @@ export const load = async ({ platform, url }) => {
 		filters,
 		workerTime: Date.now(),
 		workerEdge: platform?.cf?.colo ?? 'local',
+		viewerId: locals.user?.user_id ?? null,
 		debugEnvironment
 	};
 };

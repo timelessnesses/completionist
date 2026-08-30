@@ -1,5 +1,5 @@
 import { getDb } from '$lib/server/db/index.js';
-import { task } from '$lib/server/db/schema.js';
+import { task, user } from '$lib/server/db/schema.js';
 import { isNull } from 'drizzle-orm';
 export const load = async ({ params, request, platform, locals }) => {
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
@@ -50,7 +50,7 @@ export const load = async ({ params, request, platform, locals }) => {
 	}));
 
 	const filters = await db.query.task_tag.findMany();
-	const users = await db.query.user.findMany();
+	const users = await db.query.user.findMany({ where: isNull(user.deleted_at) });
 
 	/* // Detect ownership: the user is an owner if they own any task or are an admin.
     let isOwner = locals.user?.admin ?? false;

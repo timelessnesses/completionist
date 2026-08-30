@@ -9,14 +9,13 @@ type NativeAlarm = {
 	occurrence_at: number;
 	end_at: number;
 	url: string;
+	importance_value: number;
+	assigned_to_user: boolean;
+	dependency_count: number;
 };
 
 const TaskAlarm = registerPlugin<{
-	sync(options: {
-		alarms: NativeAlarm[];
-		syncToken: string;
-		refreshUrl: string;
-	}): Promise<{
+	sync(options: { alarms: NativeAlarm[]; syncToken: string; refreshUrl: string }): Promise<{
 		scheduled: number;
 		notificationsAllowed: boolean;
 		exactAlarmAllowed: boolean;

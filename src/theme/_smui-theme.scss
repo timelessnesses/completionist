@@ -11,8 +11,6 @@
 	$error: color-palette.$red-900
 );
 
-@use '@smui/common/typography/index' as typography;
-
 // Component theme styles
 @use '@smui/button/style' as button;
 @use '@smui/icon-button/style' as icon-button;
@@ -22,6 +20,7 @@
 @use '@smui/paper/style' as paper;
 @use '@smui/top-app-bar/style' as top-app-bar;
 @use '@smui/circular-progress/style' as circular-progress;
+@use 'typography';
 
 html,
 body {
@@ -34,54 +33,4 @@ a {
 }
 a:visited {
 	color: color.scale(#3b82f6, $lightness: -20%);
-}
-
-html {
-	@include typography.typography('body1');
-}
-
-h1 {
-	@include typography.typography('headline1');
-}
-
-h2 {
-	@include typography.typography('headline2');
-}
-
-h3 {
-	@include typography.typography('headline3');
-}
-
-h4 {
-	@include typography.typography('headline4');
-}
-
-h5 {
-	@include typography.typography('headline5');
-}
-
-h6 {
-	@include typography.typography('headline6');
-}
-
-caption {
-	@include typography.typography('caption');
-}
-
-code,
-pre {
-	font-family: 'Roboto Mono', monospace;
-}
-
-small {
-	font-size: 0.9em;
-}
-
-big {
-	font-size: 1.1em;
-}
-
-b,
-strong {
-	font-weight: bold;
 }

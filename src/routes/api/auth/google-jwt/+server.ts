@@ -12,6 +12,11 @@ import {
 } from './stuff';
 import { getDb } from '$lib/server/db/index.js';
 import { JWT_EXPIRATION_IN_SECONDS, REFRESH_TOKEN_EXPIRATION_IN_SECONDS } from '$lib/constants';
+import {
+	emailBelongsToDomain,
+	normalizeEmail,
+	organizationMembersAreAllowed
+} from '$lib/server/access-control';
 
 export type GoogleJwtRequest = {
 	id_token: string;
@@ -40,7 +45,9 @@ export async function POST({ request, cookies, platform }) {
 	if (!payload) {
 		return new Response(JSON.stringify({ error: 'Invalid ID token' }), { status: 400 });
 	}
-	if (!payload.email?.endsWith('@tsu.ac.th')) {
+	const email = normalizeEmail(payload.email ?? '');
+	const organizationDomain = envPublic.PUBLIC_ORGANIZATION_DOMAIN ?? '';
+	if (!emailBelongsToDomain(email, organizationDomain)) {
 		return new Response(JSON.stringify({ error: 'Invalid email' }), { status: 400 });
 	}
 	if (!payload.email_verified) {
@@ -50,44 +57,59 @@ export async function POST({ request, cookies, platform }) {
 		await db.query.user_identities.findFirst({
 			where: and(
 				eq(user_identities.provider, 'google'),
-				eq(user_identities.provider_user_id, payload.email)
+				eq(user_identities.provider_user_id, email)
 			),
 			with: {
 				user: true
 			}
 		})
 	)?.user;
+	const isBootstrapAdmin = normalizeEmail(envPrivate.ADMIN_EMAIL ?? '') === email;
+	if (resolvedUser?.deleted_at && !isBootstrapAdmin) {
+		return new Response(JSON.stringify({ error: 'This account has been deactivated.' }), {
+			status: 403,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
+	if (
+		!isBootstrapAdmin &&
+		!(await organizationMembersAreAllowed(db)) &&
+		resolvedUser?.whitelisted !== 1
+	) {
+		return new Response(JSON.stringify({ error: 'Your account is not on the access whitelist.' }), {
+			status: 403,
+			headers: { 'Content-Type': 'application/json' }
+		});
+	}
 	if (!resolvedUser) {
-		await db
+		const [createdUser] = await db
 			.insert(user)
 			.values({
 				name: payload.name as string,
 				logged_in_when: new Date(),
 				jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
 				refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS),
+				whitelisted: isBootstrapAdmin ? 1 : 0,
 				owner: 1
 			})
-			.run();
-		const user_t = await db.query.user.findFirst({
-			where: eq(user.name, payload.name as string)
-		});
-		if (!user_t) {
+			.returning();
+		if (!createdUser) {
 			throw error(400, `Failed to create user account for ${payload.email}.`);
 		}
 		await db
 			.insert(user_identities)
 			.values({
-				user_id: user_t.id,
+				user_id: createdUser.id,
 				provider: 'google',
-				provider_user_id: payload.email,
-				email: payload.email
+				provider_user_id: email,
+				email
 			})
 			.run();
-		resolvedUser = user_t;
+		resolvedUser = createdUser;
 	}
 
 	if (!resolvedUser) {
-		throw error(400, `No user account linked to ${payload.email}.`);
+		throw error(400, `No user account linked to ${email}.`);
 	}
 
 	const refresh_token = randomBytesToString(64);

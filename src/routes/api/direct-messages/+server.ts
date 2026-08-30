@@ -1,6 +1,6 @@
 import { getDb } from '$lib/server/db';
 import { direct_message, direct_message_attachment, user } from '$lib/server/db/schema';
-import { and, asc, eq, or } from 'drizzle-orm';
+import { and, asc, eq, isNull, or } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
 
 type AttachmentInput = {
@@ -139,7 +139,7 @@ export const POST = async ({ request, platform, locals }) => {
 
 async function assertUserExists(db: ReturnType<typeof getDb>, id: string) {
 	const found = await db.query.user.findFirst({
-		where: eq(user.id, id),
+		where: and(eq(user.id, id), isNull(user.deleted_at)),
 		columns: {
 			id: true,
 			name: true,

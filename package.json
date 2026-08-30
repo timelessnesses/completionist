@@ -95,6 +95,7 @@
 		"jose": "^6.2.7",
 		"resend": "^6.18.1",
 		"set-cookie-parser": "^3.1.2",
-		"web-push": "^3.6.7"
+		"web-push": "^3.6.7",
+		"xlsx": "^0.18.5"
 	}
 }

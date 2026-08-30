@@ -1,16 +1,24 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
 	import {
+		mdiAccountMultipleOutline,
+		mdiAccountPlusOutline,
+		mdiAccountStarOutline,
 		mdiArrowLeft,
 		mdiCalendarCheckOutline,
 		mdiClose,
 		mdiDeleteOutline,
+		mdiFlagOutline,
+		mdiFlagRemoveOutline,
 		mdiHistory,
 		mdiMagnify,
 		mdiPencilOutline,
 		mdiPlus,
-		mdiRestore
+		mdiRestore,
+		mdiShieldAccountOutline,
+		mdiUploadOutline
 	} from '@mdi/js';
+	import * as XLSX from 'xlsx';
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
 	import type { PageProps } from './$types';
 	import type { RichTask } from '$lib/features/tasks/types';
@@ -27,6 +35,15 @@
 		details: string | null;
 		created_at: Date | number | string;
 	};
+	type AccountEntry = {
+		id: string;
+		email: string;
+		display_name: string | null;
+		whitelisted: boolean;
+		owner: boolean;
+		deleted_at: Date | number | string | null;
+		logged_in_when: Date | number | string | null;
+	};
 
 	let { data }: PageProps = $props();
 	let events = $state<RichTask[]>(data.events as RichTask[]);
@@ -38,6 +55,265 @@
 	let busyId = $state<string | null>(null);
 	let formError = $state('');
 	let draft = $state(emptyDraft());
+	let accounts = $state<AccountEntry[]>(data.accounts as AccountEntry[]);
+	let allowOrgMembers = $state(data.accessPolicy.allowOrgMembers);
+	let accessBusy = $state(false);
+	let accessError = $state('');
+	let accountDraft = $state({
+		id: '',
+		email: '',
+		display_name: '',
+		whitelisted: true,
+		owner: false
+	});
+	let fileInput: HTMLInputElement;
+	let importerOpen = $state(false);
+	let importing = $state(false);
+	let sheetRows = $state<unknown[][]>([]);
+	let sheetNames = $state<string[]>([]);
+	let sheetNumber = $state(1);
+	let emailColumn = $state('');
+	let nameColumn = $state('');
+	let workbook: XLSX.WorkBook | null = null;
+
+	const importPreview = $derived.by(() => {
+		const emailIndex = columnToIndex(emailColumn);
+		const nameIndex = columnToIndex(nameColumn);
+		if (emailIndex < 0) return [];
+		const domain = String(data.organizationDomain).toLowerCase();
+		return sheetRows
+			.map((row) => ({
+				email: String(row[emailIndex] ?? '')
+					.trim()
+					.toLowerCase(),
+				display_name: nameIndex >= 0 ? String(row[nameIndex] ?? '').trim() : ''
+			}))
+			.filter(
+				(entry, index, entries) =>
+					entry.email.endsWith(`@${domain}`) &&
+					entry.email.length > domain.length + 1 &&
+					entries.findIndex((candidate) => candidate.email === entry.email) === index
+			);
+	});
+
+	async function responseError(response: Response) {
+		const body = (await response.json().catch(() => null)) as { message?: string } | null;
+		return body?.message || response.statusText || 'Request failed';
+	}
+
+	async function setAccessMode(checked: boolean) {
+		const previous = allowOrgMembers;
+		allowOrgMembers = checked;
+		accessBusy = true;
+		accessError = '';
+		try {
+			const response = await fetch('/admin/access', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ allow_org_members: checked })
+			});
+			if (!response.ok) throw new Error(await responseError(response));
+		} catch (error) {
+			allowOrgMembers = previous;
+			accessError = error instanceof Error ? error.message : 'Could not update access mode.';
+		} finally {
+			accessBusy = false;
+		}
+	}
+
+	function editAccount(entry: AccountEntry) {
+		accountDraft = {
+			id: entry.id,
+			email: entry.email,
+			display_name: entry.display_name ?? '',
+			whitelisted: entry.whitelisted,
+			owner: entry.owner
+		};
+		accessError = '';
+	}
+
+	function clearAccountDraft() {
+		accountDraft = { id: '', email: '', display_name: '', whitelisted: true, owner: false };
+	}
+
+	async function saveAccount() {
+		accessBusy = true;
+		accessError = '';
+		try {
+			const response = await fetch('/admin/access', {
+				method: accountDraft.id ? 'PUT' : 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(accountDraft)
+			});
+			if (!response.ok) throw new Error(await responseError(response));
+			const saved = (await response.json()) as AccountEntry;
+			accounts = accountDraft.id
+				? accounts.map((entry) => (entry.id === saved.id ? saved : entry))
+				: [...accounts, saved];
+			accounts.sort((a, b) => a.email.localeCompare(b.email));
+			clearAccountDraft();
+		} catch (error) {
+			accessError = error instanceof Error ? error.message : 'Could not save account.';
+		} finally {
+			accessBusy = false;
+		}
+	}
+
+	async function deleteAccount(entry: AccountEntry) {
+		if (!confirm(`Soft-delete ${entry.email}? Their history and event references will be kept.`))
+			return;
+		accessBusy = true;
+		accessError = '';
+		try {
+			const response = await fetch(`/admin/access?id=${encodeURIComponent(entry.id)}`, {
+				method: 'DELETE'
+			});
+			if (!response.ok) throw new Error(await responseError(response));
+			const result = (await response.json()) as { deleted_at: Date | number | string };
+			accounts = accounts.map((item) =>
+				item.id === entry.id
+					? { ...item, deleted_at: result.deleted_at, whitelisted: false, owner: false }
+					: item
+			);
+			if (accountDraft.id === entry.id) clearAccountDraft();
+		} catch (error) {
+			accessError = error instanceof Error ? error.message : 'Could not delete account.';
+		} finally {
+			accessBusy = false;
+		}
+	}
+
+	async function setWhitelisted(entry: AccountEntry, whitelisted: boolean) {
+		accessBusy = true;
+		accessError = '';
+		try {
+			const response = await fetch('/admin/access', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: entry.id, whitelisted })
+			});
+			if (!response.ok) throw new Error(await responseError(response));
+			accounts = accounts.map((item) => (item.id === entry.id ? { ...item, whitelisted } : item));
+		} catch (error) {
+			accessError = error instanceof Error ? error.message : 'Could not update account access.';
+		} finally {
+			accessBusy = false;
+		}
+	}
+
+	async function setOwner(entry: AccountEntry, owner: boolean) {
+		accessBusy = true;
+		accessError = '';
+		try {
+			const response = await fetch('/admin/access', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: entry.id, owner })
+			});
+			if (!response.ok) throw new Error(await responseError(response));
+			accounts = accounts.map((item) => (item.id === entry.id ? { ...item, owner } : item));
+		} catch (error) {
+			accessError = error instanceof Error ? error.message : 'Could not update owner role.';
+		} finally {
+			accessBusy = false;
+		}
+	}
+
+	async function restoreAccount(entry: AccountEntry) {
+		accessBusy = true;
+		accessError = '';
+		try {
+			const response = await fetch('/admin/access', {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: entry.id, restore: true })
+			});
+			if (!response.ok) throw new Error(await responseError(response));
+			accounts = accounts.map((item) =>
+				item.id === entry.id ? { ...item, deleted_at: null } : item
+			);
+		} catch (error) {
+			accessError = error instanceof Error ? error.message : 'Could not restore account.';
+		} finally {
+			accessBusy = false;
+		}
+	}
+
+	function columnToIndex(value: string) {
+		const trimmed = value.trim();
+		if (!trimmed) return -1;
+		if (/^\d+$/.test(trimmed)) return Number(trimmed) - 1;
+		let index = 0;
+		for (const character of trimmed.toUpperCase()) {
+			if (character < 'A' || character > 'Z') return -1;
+			index = index * 26 + character.charCodeAt(0) - 64;
+		}
+		return index - 1;
+	}
+
+	function loadSheet() {
+		if (!workbook) return;
+		const sheetName = workbook.SheetNames[sheetNumber - 1] ?? workbook.SheetNames[0];
+		sheetRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+			header: 1,
+			blankrows: false
+		}) as unknown[][];
+	}
+
+	function fileChange(event: Event) {
+		const file = (event.currentTarget as HTMLInputElement).files?.[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = () => {
+			if (!(reader.result instanceof ArrayBuffer)) return;
+			workbook = XLSX.read(reader.result, { type: 'array' });
+			sheetNames = workbook.SheetNames;
+			sheetNumber = 1;
+			emailColumn = '';
+			nameColumn = '';
+			loadSheet();
+			importerOpen = true;
+		};
+		reader.readAsArrayBuffer(file);
+	}
+
+	function closeImporter() {
+		if (importing) return;
+		importerOpen = false;
+		workbook = null;
+		sheetRows = [];
+		if (fileInput) fileInput.value = '';
+	}
+
+	async function importWhitelist() {
+		if (!importPreview.length) return;
+		importing = true;
+		accessError = '';
+		try {
+			const response = await fetch('/admin/access', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ entries: importPreview })
+			});
+			if (!response.ok) throw new Error(await responseError(response));
+			const result = (await response.json()) as {
+				entries: AccountEntry[];
+				imported: number;
+				skipped: number;
+			};
+			const byId = new Map([...accounts, ...result.entries].map((entry) => [entry.id, entry]));
+			accounts = [...byId.values()].sort((a, b) => a.email.localeCompare(b.email));
+			importing = false;
+			closeImporter();
+			alert(
+				`Imported ${result.imported} account${result.imported === 1 ? '' : 's'}; skipped ${result.skipped}.`
+			);
+		} catch (error) {
+			accessError = error instanceof Error ? error.message : 'Could not import the spreadsheet.';
+		} finally {
+			importing = false;
+		}
+	}
 
 	const filteredEvents = $derived.by(() => {
 		const needle = query.trim().toLowerCase();
@@ -260,7 +536,7 @@
 		<div class="mark"><MdiIcon path={mdiCalendarCheckOutline} size={22} /></div>
 		<div>
 			<p class="kicker">Admin workspace</p>
-			<h1>Event administration</h1>
+			<h1>Administration</h1>
 		</div>
 		<button class="create" onclick={openCreate}
 			><MdiIcon path={mdiPlus} size={18} /> New event</button
@@ -271,6 +547,150 @@
 		<div><strong>{events.length}</strong><span>Total records</span></div>
 		<div><strong>{activeCount}</strong><span>Active events</span></div>
 		<div class="danger"><strong>{deletedCount}</strong><span>Recoverable</span></div>
+	</section>
+
+	<section class="access-panel" aria-labelledby="access-heading">
+		<header class="access-head">
+			<div class="audit-title">
+				<span class="audit-mark"><MdiIcon path={mdiShieldAccountOutline} size={20} /></span>
+				<div>
+					<p class="kicker">Sign-in policy</p>
+					<h2 id="access-heading">Organization access</h2>
+				</div>
+			</div>
+			<label class="access-toggle">
+				<input
+					type="checkbox"
+					checked={allowOrgMembers}
+					disabled={accessBusy}
+					onchange={(event) => setAccessMode(event.currentTarget.checked)}
+				/>
+				<span>Allow everyone in @{data.organizationDomain}</span>
+			</label>
+		</header>
+		<div class="access-copy">
+			{#if allowOrgMembers}
+				<strong>Organization mode:</strong> any verified @{data.organizationDomain} account may sign in.
+			{:else}
+				<strong>Whitelist mode:</strong> only active accounts flagged <em>True</em> below may sign in.
+				The configured bootstrap administrator always retains access.
+			{/if}
+		</div>
+		<form
+			class="whitelist-form"
+			onsubmit={(event) => {
+				event.preventDefault();
+				saveAccount();
+			}}
+		>
+			<label>
+				<span>Email</span>
+				<input
+					type="email"
+					placeholder={`student@${data.organizationDomain}`}
+					bind:value={accountDraft.email}
+					required
+				/>
+			</label>
+			<label>
+				<span>Name (optional)</span>
+				<input placeholder="Display name" bind:value={accountDraft.display_name} />
+			</label>
+			<button class="save access-save" disabled={accessBusy}>
+				<MdiIcon path={accountDraft.id ? mdiPencilOutline : mdiAccountPlusOutline} size={17} />
+				{accountDraft.id ? 'Save account' : 'Add account'}
+			</button>
+			{#if accountDraft.id}
+				<button class="cancel access-cancel" type="button" onclick={clearAccountDraft}
+					>Cancel</button
+				>
+			{/if}
+			<button class="import-button" type="button" onclick={() => fileInput.click()}>
+				<MdiIcon path={mdiUploadOutline} size={17} /> Import spreadsheet
+			</button>
+		</form>
+		<input
+			class="sr-only"
+			type="file"
+			accept=".csv,.xls,.xlsx"
+			bind:this={fileInput}
+			onchange={fileChange}
+		/>
+		{#if accessError}<p class="access-error">{accessError}</p>{/if}
+		<div class="table-wrap whitelist-table">
+			<table>
+				<thead>
+					<tr
+						><th>Account</th><th>Name</th><th>Whitelisted</th><th>Owner</th><th>State</th><th
+							>Last sign-in</th
+						><th><span class="sr-only">Actions</span></th></tr
+					>
+				</thead>
+				<tbody>
+					{#each accounts as entry (entry.id)}
+						<tr class:deleted={!!entry.deleted_at}>
+							<td
+								><span class="account"
+									><MdiIcon path={mdiAccountMultipleOutline} size={18} />{entry.email}</span
+								></td
+							>
+							<td>{entry.display_name || '—'}</td>
+							<td>
+								<span class="boolean" class:on={entry.whitelisted}
+									>{entry.whitelisted ? 'True' : 'False'}</span
+								>
+							</td>
+							<td>
+								<span class="boolean" class:on={entry.owner}>{entry.owner ? 'True' : 'False'}</span>
+							</td>
+							<td
+								><span class="status" data-status={entry.deleted_at ? 'cancelled' : 'completed'}
+									>{entry.deleted_at ? 'Deleted' : 'Active'}</span
+								></td
+							>
+							<td>{entry.logged_in_when ? dateLabel(entry.logged_in_when) : 'Never'}</td>
+							<td class="actions">
+								{#if entry.deleted_at}
+									<button
+										title="Restore account"
+										disabled={accessBusy}
+										onclick={() => restoreAccount(entry)}
+										><MdiIcon path={mdiRestore} size={18} /></button
+									>
+								{:else}
+									<button
+										title={entry.whitelisted ? 'Remove whitelist flag' : 'Whitelist account'}
+										disabled={accessBusy}
+										onclick={() => setWhitelisted(entry, !entry.whitelisted)}
+										><MdiIcon
+											path={entry.whitelisted ? mdiFlagRemoveOutline : mdiFlagOutline}
+											size={18}
+										/></button
+									>
+									<button
+										title={entry.owner ? 'Remove owner role' : 'Grant owner role'}
+										disabled={accessBusy}
+										onclick={() => setOwner(entry, !entry.owner)}
+										><MdiIcon path={mdiAccountStarOutline} size={18} /></button
+									>
+									<button title="Edit account" onclick={() => editAccount(entry)}
+										><MdiIcon path={mdiPencilOutline} size={17} /></button
+									>
+									<button
+										class="delete"
+										title="Soft-delete account"
+										disabled={accessBusy || entry.id === data.currentAdmin.id}
+										onclick={() => deleteAccount(entry)}
+										><MdiIcon path={mdiDeleteOutline} size={18} /></button
+									>
+								{/if}
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+			{#if accounts.length === 0}<div class="empty">No accounts have been created yet.</div>{/if}
+		</div>
 	</section>
 
 	<section class="workspace">
@@ -388,6 +808,75 @@
 		{/if}
 	</section>
 </main>
+
+{#if importerOpen}
+	<button class="scrim" aria-label="Close spreadsheet importer" onclick={closeImporter}></button>
+	<aside
+		class="editor importer"
+		aria-label="Import account spreadsheet"
+		transition:fly={{ x: 30, duration: 260 }}
+	>
+		<header>
+			<div>
+				<p class="kicker">CSV / Excel</p>
+				<h2>Import accounts</h2>
+			</div>
+			<button class="close" type="button" onclick={closeImporter}
+				><MdiIcon path={mdiClose} size={20} /></button
+			>
+		</header>
+		<div class="import-grid">
+			{#if sheetNames.length > 1}
+				<label class="wide"
+					><span>Sheet</span><select bind:value={sheetNumber} onchange={loadSheet}>
+						{#each sheetNames as sheet, index}<option value={index + 1}>{index + 1}. {sheet}</option
+							>{/each}
+					</select></label
+				>
+			{/if}
+			<label><span>Email column</span><input placeholder="A or 1" bind:value={emailColumn} /></label
+			>
+			<label
+				><span>Name column (optional)</span><input
+					placeholder="B or 2"
+					bind:value={nameColumn}
+				/></label
+			>
+		</div>
+		<p class="import-help">
+			Columns accept spreadsheet letters or one-based numbers. Invalid domains, blank rows, and
+			duplicate emails are excluded.
+		</p>
+		<div class="preview-table">
+			<table>
+				<thead><tr><th>Email</th><th>Name</th></tr></thead>
+				<tbody>
+					{#each importPreview.slice(0, 100) as entry}
+						<tr><td>{entry.email}</td><td>{entry.display_name || '—'}</td></tr>
+					{/each}
+				</tbody>
+			</table>
+			{#if importPreview.length === 0}<div class="empty">
+					Select the email column to preview valid rows.
+				</div>{/if}
+		</div>
+		{#if importPreview.length > 100}<p class="import-help">
+				Showing the first 100 of {importPreview.length} valid rows.
+			</p>{/if}
+		<footer>
+			<button type="button" class="cancel" onclick={closeImporter}>Cancel</button>
+			<button
+				class="save"
+				disabled={importing || importPreview.length === 0}
+				onclick={importWhitelist}
+			>
+				{importing
+					? 'Importing…'
+					: `Import ${importPreview.length} account${importPreview.length === 1 ? '' : 's'}`}
+			</button>
+		</footer>
+	</aside>
+{/if}
 
 {#if editorOpen}
 	<button class="scrim" aria-label="Close editor" onclick={closeEditor}></button>
@@ -570,6 +1059,124 @@
 	.metrics .danger strong {
 		color: #b3261e;
 	}
+	.access-panel {
+		max-width: 1440px;
+		margin: 0 auto 16px;
+		border: 1px solid #e1e3e1;
+		border-radius: 16px;
+		overflow: hidden;
+		background: #fff;
+		box-shadow: 0 1px 2px rgb(60 64 67 / 8%);
+	}
+	.access-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 20px;
+		padding: 16px 18px;
+		border-bottom: 1px solid #e8eaed;
+	}
+	.access-head h2 {
+		font-size: 19px;
+	}
+	.access-toggle {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		color: #1f1f1f;
+		font-size: 12px;
+		font-weight: 500;
+		cursor: pointer;
+	}
+	.access-toggle input {
+		width: 18px;
+		height: 18px;
+		accent-color: #0b57d0;
+	}
+	.access-copy {
+		padding: 12px 18px;
+		color: #444746;
+		background: #f8fafd;
+		font-size: 12px;
+	}
+	.whitelist-form {
+		display: grid;
+		grid-template-columns: minmax(220px, 1fr) minmax(180px, 0.8fr) auto auto auto;
+		align-items: end;
+		gap: 10px;
+		padding: 14px 18px;
+		border-top: 1px solid #eef0f1;
+		border-bottom: 1px solid #e8eaed;
+	}
+	.whitelist-form label,
+	.import-grid label {
+		display: grid;
+		gap: 5px;
+	}
+	.whitelist-form label > span,
+	.import-grid label > span {
+		color: #444746;
+		font-size: 10px;
+		font-weight: 600;
+	}
+	.whitelist-form input,
+	.import-grid input,
+	.import-grid select {
+		width: 100%;
+		min-height: 40px;
+		border: 1px solid #c4c7c5;
+		border-radius: 8px;
+		background: #fff;
+		color: #1f1f1f;
+		font: inherit;
+	}
+	.whitelist-form input:focus,
+	.import-grid input:focus,
+	.import-grid select:focus {
+		border-color: #0b57d0;
+		box-shadow: 0 0 0 1px #0b57d0;
+		outline: 0;
+	}
+	.access-save,
+	.import-button,
+	.access-cancel {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 7px;
+		min-height: 40px;
+		padding: 0 14px;
+		border: 0;
+		border-radius: 999px;
+		font-weight: 500;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.import-button {
+		color: #0b57d0;
+		background: #e8f0fe;
+	}
+	.access-cancel {
+		background: transparent;
+	}
+	.access-error {
+		margin: 12px 18px;
+		padding: 10px 12px;
+		border-radius: 8px;
+		color: #b3261e;
+		background: #fce8e6;
+		font-size: 12px;
+	}
+	.whitelist-table {
+		max-height: 350px;
+		overflow-y: auto;
+	}
+	.account {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 500;
+	}
 	.workspace {
 		max-width: 1440px;
 		margin: auto;
@@ -721,6 +1328,22 @@
 	.status[data-status='cancelled'] {
 		color: #b3261e;
 		background: #fce8e6;
+	}
+	.boolean {
+		display: inline-flex;
+		min-width: 42px;
+		justify-content: center;
+		padding: 4px 8px;
+		border-radius: 999px;
+		color: #5f6368;
+		background: #f0f4f9;
+		font-size: 10px;
+		font-weight: 700;
+		text-transform: uppercase;
+	}
+	.boolean.on {
+		color: #0d652d;
+		background: #e6f4ea;
 	}
 	.actions {
 		display: flex;
@@ -970,6 +1593,35 @@
 		gap: 9px;
 		margin-top: 8px;
 	}
+	.importer {
+		width: min(660px, calc(100vw - 24px));
+	}
+	.import-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 14px;
+	}
+	.import-grid .wide {
+		grid-column: 1 / -1;
+	}
+	.import-help {
+		margin: 14px 0;
+		color: #5f6368;
+		font-size: 11px;
+		line-height: 1.5;
+	}
+	.preview-table {
+		max-height: 420px;
+		overflow: auto;
+		border: 1px solid #e1e3e1;
+		border-radius: 12px;
+	}
+	.importer footer {
+		display: flex;
+		justify-content: flex-end;
+		gap: 9px;
+		margin-top: 18px;
+	}
 	.editor footer button {
 		min-height: 40px;
 		padding: 0 18px;
@@ -1037,6 +1689,19 @@
 		.controls {
 			align-items: stretch;
 			flex-direction: column;
+		}
+		.access-head {
+			align-items: flex-start;
+			flex-direction: column;
+		}
+		.whitelist-form {
+			grid-template-columns: 1fr;
+		}
+		.import-grid {
+			grid-template-columns: 1fr;
+		}
+		.import-grid > * {
+			grid-column: 1;
 		}
 		.scope {
 			margin: 0;

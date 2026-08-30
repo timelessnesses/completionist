@@ -34,6 +34,7 @@
 	import { registerServiceWorker, requestForNotificationPermission } from '$lib/notificationStuff';
 	import { notificationPath } from '$lib/notification-links';
 	import { syncNativeTaskAlarms } from '$lib/task-alarms';
+	import { compareTaskPriority } from '$lib/features/tasks/priority';
 
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
@@ -51,6 +52,9 @@
 	let notificationUserId = $state<string | null>(null);
 	let notificationMessageId = $state<string | null>(null);
 	let notificationNotice = $state<{ title: string; message: string } | null>(null);
+	let startingEventNotice = $state<RichTask | null>(null);
+	let startingEventQueue = $state<RichTask[]>([]);
+	const shownStartingEventIds = new Set<string>();
 	let handledNotificationLink = '';
 	let notificationHighlightTimer: number | null = null;
 	let commentDraft = $state('');
@@ -83,6 +87,49 @@
 		peopleOpen = false;
 		taskBoardOpen = false;
 		notificationNotice = null;
+	}
+
+	function isStartNoticeRecipient(task: RichTask): boolean {
+		if (!viewerId) return false;
+		return (
+			task.owner === viewerId ||
+			(task.assignees ?? []).some((assignee) => assignee.user_id === viewerId)
+		);
+	}
+
+	function queueStartingEvents(from: number, until: number) {
+		const started = events
+			.filter((task) => {
+				const start = +new Date(task.start_at);
+				const end = +new Date(task.end_at);
+				return (
+					!task.completed &&
+					task.status !== 'cancelled' &&
+					start > from &&
+					start <= until &&
+					end > until &&
+					!shownStartingEventIds.has(task.id) &&
+					isStartNoticeRecipient(task)
+				);
+			})
+			.sort((a, b) => compareTaskPriority(a, b, viewerId));
+		if (!started.length) return;
+		for (const task of started) shownStartingEventIds.add(task.id);
+		const queue = [...startingEventQueue, ...started];
+		if (!startingEventNotice) {
+			startingEventNotice = queue.shift() ?? null;
+		}
+		startingEventQueue = queue;
+	}
+
+	function dismissStartingEvent() {
+		startingEventNotice = startingEventQueue[0] ?? null;
+		startingEventQueue = startingEventQueue.slice(1);
+	}
+
+	function openStartingEvent() {
+		if (startingEventNotice) openMiniEvent(startingEventNotice);
+		dismissStartingEvent();
 	}
 
 	let { data }: PageProps = $props();
@@ -659,9 +706,13 @@
 		let pushActionHandle: { remove: () => Promise<void> } | null = null;
 		let localActionHandle: { remove: () => Promise<void> } | null = null;
 		let pushReceivedHandle: { remove: () => Promise<void> } | null = null;
+		let lastStartCheck = Date.now() - 1_500;
 		const clockTimer = window.setInterval(() => {
-			currentTime = Date.now();
-		}, 30_000);
+			const now = Date.now();
+			currentTime = now;
+			queueStartingEvents(Math.max(lastStartCheck, now - 60_000), now);
+			lastStartCheck = now;
+		}, 1_000);
 		const onMessage = (event: MessageEvent) => {
 			let data: any;
 			try {
@@ -850,6 +901,27 @@
 				<p>{notificationNotice.message}</p>
 			</div>
 			<button type="button" onclick={() => (notificationNotice = null)}>Got it</button>
+		</div>
+	{/if}
+
+	{#if startingEventNotice}
+		<div class="notification-notice-scrim" role="presentation" onclick={dismissStartingEvent}></div>
+		<div
+			class="notification-notice start-notice"
+			role="alertdialog"
+			aria-modal="true"
+			aria-labelledby="starting-event-title"
+		>
+			<span class="notification-notice-mark" aria-hidden="true">!</span>
+			<div>
+				<p class="eyebrow">Event starting now</p>
+				<h2 id="starting-event-title">{startingEventNotice.task_name}</h2>
+				<p>{startingEventNotice.description || 'This event has just started.'}</p>
+			</div>
+			<div class="start-actions">
+				<button class="secondary" type="button" onclick={dismissStartingEvent}>Dismiss</button>
+				<button type="button" onclick={openStartingEvent}>Open event</button>
+			</div>
 		</div>
 	{/if}
 
@@ -1352,6 +1424,20 @@
 		font-size: 12px;
 		font-weight: 650;
 		cursor: pointer;
+	}
+	.start-actions {
+		grid-column: 2;
+		display: flex;
+		justify-content: flex-end;
+		gap: 8px;
+	}
+	.notification-notice .start-actions button {
+		grid-column: auto;
+	}
+	.notification-notice .start-actions .secondary {
+		border: 1px solid var(--color-border);
+		background: var(--color-card);
+		color: var(--color-foreground);
 	}
 	.task-close {
 		position: absolute;

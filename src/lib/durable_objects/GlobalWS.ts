@@ -1,5 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { getDb } from '../server/db/index';
+import { user } from '../server/db/schema';
+import { isNull } from 'drizzle-orm';
 type OnlineUsersRequest = {
 	type: 'online_users';
 };
@@ -171,7 +173,7 @@ export class GlobalWS extends DurableObject {
 
 	async buildPeople() {
 		try {
-			const users = await this.db.query.user.findMany();
+			const users = await this.db.query.user.findMany({ where: isNull(user.deleted_at) });
 			const onlineIds = new Set(
 				this.ctx
 					.getWebSockets()

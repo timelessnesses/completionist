@@ -45,9 +45,11 @@ export async function registerServiceWorker(vapidPublicKey: string) {
 		console.log('notification permission:', permission);
 		console.log('service worker supported, registering...');
 		if (!vapidPublicKey) return;
-		const sw =
-			(await navigator.serviceWorker.getRegistration('/')) ??
-			(await navigator.serviceWorker.register('/sw.js', { scope: '/' }));
+		const sw = await navigator.serviceWorker.register('/service-worker.js', {
+			scope: '/',
+			updateViaCache: 'none'
+		});
+		await sw.update();
 		await navigator.serviceWorker.ready;
 		console.log('service worker registered:', sw);
 		if (permission === 'granted') {

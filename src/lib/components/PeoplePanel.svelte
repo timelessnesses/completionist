@@ -31,7 +31,6 @@
 		unregisterServiceWorker
 	} from '$lib/notificationStuff';
 	import { notificationPath } from '$lib/notification-links';
-	import favicon from '$lib/assets/favicon.svg';
 	import { setIcon } from '$lib/nativePlugin';
 	import { openNativeAlarmSettings, openNativeUnusedAppSettings } from '$lib/task-alarms';
 
@@ -375,7 +374,7 @@
 			const notification = new Notification(`New message from ${sender}`, {
 				body,
 				tag: `direct-message-${message.id}`,
-				icon: message.from_user?.profile_picture_url ?? favicon
+				icon: message.from_user?.profile_picture_url || '/favicon.ico'
 			});
 			notification.onclick = () => {
 				notification.close();

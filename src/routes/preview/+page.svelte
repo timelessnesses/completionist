@@ -23,6 +23,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { fly, scale } from 'svelte/transition';
 	import { subscribeWS } from '$lib/websocket.svelte';
+	import { compareTaskPriority } from '$lib/features/tasks/priority';
 
 	const { data }: PageProps = $props();
 	const initialWorkerTime = data.workerTime;
@@ -83,20 +84,20 @@
 		}
 		return map;
 	});
-	const sortedByStart = $derived(
+	const prioritizedEvents = $derived(
 		[...events]
 			.filter((event) => !event.completed && event.status !== 'cancelled')
-			.sort((a, b) => +new Date(a.start_at) - +new Date(b.start_at))
+			.sort((a, b) => compareTaskPriority(a, b, data.viewerId))
 	);
 	const activeEvent = $derived.by(() =>
-		sortedByStart.find((ev) => {
+		prioritizedEvents.find((ev) => {
 			const start = +new Date(ev.start_at);
 			const end = +new Date(ev.end_at);
 			return start <= nowMs && nowMs < end;
 		})
 	);
 	const upcomingEvents = $derived(
-		sortedByStart.filter(
+		prioritizedEvents.filter(
 			(event) => +new Date(event.start_at) > nowMs && +new Date(event.end_at) > nowMs
 		)
 	);
@@ -109,7 +110,7 @@
 	const isCountdownState = $derived(!activeEvent && msUntilNext > 0 && msUntilNext <= 60_000);
 	const workerClockTime = $derived(formatWorkerTime(nowMs));
 	const workerClockDate = $derived(formatWorkerDate(nowMs));
-	const debugTarget = $derived(nextEvent ?? sortedByStart[0] ?? debugFallbackEvent);
+	const debugTarget = $derived(nextEvent ?? prioritizedEvents[0] ?? debugFallbackEvent);
 	const debugIntroActive = $derived(
 		!!debugEvent && debugEndMs - debugIntroEndMs >= 30_000 && timerNowMs < debugIntroEndMs
 	);

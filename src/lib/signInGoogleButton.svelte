@@ -25,11 +25,16 @@
 				credentials: 'include'
 			});
 
-			if (!response.ok) throw new Error('Failed to sign in with Google');
+			if (!response.ok) {
+				const body = (await response.json().catch(() => null)) as { error?: string } | null;
+				throw new Error(body?.error || 'Failed to sign in with Google');
+			}
 			window.location.href = '/';
 		} catch (err) {
 			console.error('Error during Google sign-in:', err);
-			alert('Failed to sign in with Google. Please try again.');
+			alert(
+				err instanceof Error ? err.message : 'Failed to sign in with Google. Please try again.'
+			);
 		} finally {
 			signingIn = false;
 		}
@@ -58,13 +63,18 @@
 				}),
 				credentials: 'include'
 			})
-				.then((r) => {
-					if (!r.ok) throw new Error('Failed to sign in with Google');
+				.then(async (r) => {
+					if (!r.ok) {
+						const body = (await r.json().catch(() => null)) as { error?: string } | null;
+						throw new Error(body?.error || 'Failed to sign in with Google');
+					}
 					window.location.href = '/';
 				})
 				.catch((err) => {
 					console.error('Error during Google sign-in:', err);
-					alert('Failed to sign in with Google. Please try again.');
+					alert(
+						err instanceof Error ? err.message : 'Failed to sign in with Google. Please try again.'
+					);
 				});
 		}
 
@@ -117,10 +127,7 @@
 	</p>
 {:else}
 	{#if Capacitor.isNativePlatform()}
-		<button
-			disabled={!ready || signingIn}
-			onclick={trySignIn}
-		>
+		<button disabled={!ready || signingIn} onclick={trySignIn}>
 			<img src={yes} alt="Google Sign In Button" style:visibility={ready ? 'visible' : 'hidden'} />
 		</button>
 	{:else}
