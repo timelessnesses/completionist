@@ -20,7 +20,6 @@
 		"crons": ["*/10 * * * *"]
 	},
 	"vars": {
-		"FCM_PROJECT_ID": "completionist-6a4af"
 	},
 	"d1_databases": [
 		{
