@@ -41,6 +41,10 @@ type DirectMessageEvent = {
 	};
 };
 
+type UserNotificationEvent = {
+	recipient_user_ids: string[];
+};
+
 export class GlobalWS extends DurableObject {
 	state: DurableObjectState;
 	env: Env;
@@ -74,6 +78,14 @@ export class GlobalWS extends DurableObject {
 				return new Response('missing direct message', { status: 400 });
 			}
 			this.broadcastDirectMessage(payload);
+			return new Response('ok', { status: 200 });
+		}
+		if (url.pathname.endsWith('/user-notification') && request.method === 'POST') {
+			const payload = (await request.json()) as UserNotificationEvent;
+			if (!Array.isArray(payload?.recipient_user_ids)) {
+				return new Response('missing notification recipients', { status: 400 });
+			}
+			this.broadcastToUsers(payload, payload.recipient_user_ids);
 			return new Response('ok', { status: 200 });
 		}
 		if (url.pathname.endsWith('/preview-debug') && request.method === 'POST') {
@@ -126,12 +138,17 @@ export class GlobalWS extends DurableObject {
 	}
 
 	broadcastDirectMessage(payload: DirectMessageEvent) {
-		const participantIds = new Set([payload.message.from_user_id, payload.message.to_user_id]);
+		this.broadcastToUsers(payload, [payload.message.to_user_id]);
+	}
+
+	broadcastToUsers(payload: unknown, userIds: string[]) {
+		const recipientIds = new Set(userIds);
+		const message = JSON.stringify(payload);
 		this.ctx.getWebSockets().forEach((socket) => {
 			const session = socket.deserializeAttachment() as ClientSession | null;
-			if (!session?.user_id || !participantIds.has(session.user_id)) return;
+			if (!session?.user_id || !recipientIds.has(session.user_id)) return;
 			try {
-				socket.send(JSON.stringify(payload));
+				socket.send(message);
 			} catch {
 				/* ignore */
 			}

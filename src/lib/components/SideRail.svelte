@@ -14,7 +14,8 @@
 		assigned = [],
 		late = [],
 		currentTime = Date.now(),
-		onCreate
+		onCreate,
+		onSelectEvent
 	}: {
 		events: RichTask[];
 		upcoming: RichTask[];
@@ -23,6 +24,7 @@
 		late?: RichTask[];
 		currentTime?: number;
 		onCreate?: () => void;
+		onSelectEvent?: (event: RichTask) => void;
 	} = $props();
 </script>
 
@@ -47,7 +49,7 @@
 	</div>
 
 	<MiniMonth {events} />
-	<UpcomingList {upcoming} {running} {assigned} {late} {currentTime} />
+	<UpcomingList {upcoming} {running} {assigned} {late} {currentTime} {onSelectEvent} />
 </aside>
 
 <style>

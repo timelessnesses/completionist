@@ -123,6 +123,15 @@
 		return isAdmin || (!!viewerId && ev.owner === viewerId);
 	}
 
+	function canCompleteEvent(ev: RichTask | null): boolean {
+		if (!ev || !viewerId) return isAdmin;
+		return (
+			isAdmin ||
+			ev.owner === viewerId ||
+			(ev.assignees ?? []).some((assignee) => assignee.user_id === viewerId)
+		);
+	}
+
 	function step(dir: -1 | 1) {
 		viewDate = view === 'Month' ? addMonths(viewDate, dir) : addDays(viewDate, dir * 7);
 	}
@@ -270,6 +279,7 @@
 		bind:open={detailsOpen}
 		event={selectedEvent}
 		canEdit={canEditEvent(selectedEvent)}
+		canComplete={canCompleteEvent(selectedEvent)}
 		tags={filters}
 		onupdated={handleUpdated}
 		ondeleted={handleDeleted}

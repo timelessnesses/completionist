@@ -106,7 +106,12 @@ export const POST = async ({ request, platform, locals }) => {
 	}
 
 	await (platform?.env as Env).COMPLETIONIST_QUEUE.send(
-		buildTaskNotificationEnvelope(updated, 'commented', user.name)
+		buildTaskNotificationEnvelope(
+			updated,
+			'commented',
+			user.name,
+			(updated.assignees ?? []).map((assignee) => assignee.user_id)
+		)
 	);
 
 	return json(updated, { status: 201 });

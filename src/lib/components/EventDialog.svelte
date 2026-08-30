@@ -3,6 +3,8 @@
 	import {
 		mdiAccountMultipleOutline,
 		mdiBellOutline,
+		mdiCheckboxMarkedCircleOutline,
+		mdiCircleOutline,
 		mdiClose,
 		mdiDeleteOutline,
 		mdiLinkVariant,
@@ -14,11 +16,7 @@
 	import type { FilterTag, RichTask, UserSummary } from '$lib/features/tasks/types';
 	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 	import { reminderRuleSummary } from '$lib/features/reminders/schedule';
-	import {
-		hasModernAndroidPicker,
-		pickModernDate,
-		pickModernTime
-	} from '$lib/modern-picker';
+	import { hasModernAndroidPicker, pickModernDate, pickModernTime } from '$lib/modern-picker';
 	import type { ReminderUnit } from '$lib/server/db/schema';
 
 	type SelectedTag = {
@@ -59,6 +57,7 @@
 		open = $bindable(false),
 		event = null,
 		canEdit = true,
+		canComplete = canEdit,
 		tags = [],
 		users = [],
 		tasks = [],
@@ -69,6 +68,7 @@
 		open?: boolean;
 		event?: RichTask | null;
 		canEdit?: boolean;
+		canComplete?: boolean;
 		tags?: FilterTag[];
 		users?: UserSummary[];
 		tasks?: RichTask[];
@@ -446,6 +446,34 @@
 			close();
 		} catch (error) {
 			errorMsg = error instanceof Error ? error.message : 'Failed to delete event.';
+		} finally {
+			busyAction = null;
+		}
+	}
+
+	async function toggleCompleted() {
+		if (!event || !canComplete || busyAction) return;
+		busyAction = 'save';
+		errorMsg = '';
+		const nextCompleted = event.completed ? null : Date.now();
+		try {
+			const response = await fetch(`/api/events?id=${encodeURIComponent(event.id)}`, {
+				method: 'PUT',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					completed: nextCompleted,
+					status: nextCompleted ? 'completed' : 'todo'
+				})
+			});
+			if (!response.ok) {
+				const message = await response.text().catch(() => '');
+				throw new Error(message || `Request failed (${response.status})`);
+			}
+			const updated: RichTask = await response.json();
+			onupdated?.(updated);
+			close();
+		} catch (error) {
+			errorMsg = error instanceof Error ? error.message : 'Failed to update completion.';
 		} finally {
 			busyAction = null;
 		}
@@ -840,6 +868,24 @@
 		{:else if event}
 			<div class="body read">
 				<div class="title">{event.task_name}</div>
+				<button
+					type="button"
+					class="completion-toggle"
+					class:disabled={!canComplete}
+					disabled={!canComplete || !!busyAction}
+					onclick={toggleCompleted}
+					title={canComplete
+						? event.completed
+							? 'Mark this event open'
+							: 'Mark this event completed'
+						: 'Only the owner or an assignee can change completion'}
+				>
+					<MdiIcon
+						path={event.completed ? mdiCheckboxMarkedCircleOutline : mdiCircleOutline}
+						size={18}
+					/>
+					{busyAction === 'save' ? 'Updating…' : event.completed ? 'Mark open' : 'Mark completed'}
+				</button>
 				<p class="meta">
 					{new Date(event.start_at).toLocaleDateString()}
 					{event.all_day ? '(All day)' : timeLabel(new Date(event.start_at))} – {new Date(
@@ -871,7 +917,11 @@
 					</div>
 				{/if}
 				{@render activityThread(event)}
-				<p class="owner-note">You can view this event, but only the owner can edit it.</p>
+				<p class="owner-note">
+					{canComplete
+						? 'You can update completion because this event is assigned to you.'
+						: 'You can view this event, but only the owner can edit it and only the owner or an assignee can mark it completed.'}
+				</p>
 			</div>
 		{/if}
 	</div>
@@ -888,6 +938,24 @@
 	}
 	.task-dialog--event .body {
 		gap: 14px;
+	}
+	.completion-toggle {
+		align-self: flex-start;
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		border: 1px solid var(--color-border);
+		border-radius: 999px;
+		background: var(--color-background);
+		padding: 7px 11px;
+		color: var(--color-foreground);
+		cursor: pointer;
+	}
+	.completion-toggle.disabled {
+		color: var(--color-muted-foreground);
+		background: var(--color-muted);
+		cursor: not-allowed;
+		opacity: 0.65;
 	}
 	.title-input {
 		border: 0;

@@ -22,7 +22,6 @@
 	let selected = $state(new Date());
 
 	const cells = $derived(buildMonthGrid(cursor.getFullYear(), cursor.getMonth()));
-
 	// Map of date-key -> info about events touching that date.
 	type Marker = {
 		single: boolean;

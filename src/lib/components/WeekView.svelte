@@ -92,13 +92,28 @@
 		return (eventsByDay.get(key) ?? []).flatMap((ev) => {
 			if (ev.completed) return [];
 			if (ev.all_day) return [];
-			const d = new Date(ev.start_at);
+			const day = days.find((candidate) => toKey(candidate) === key);
+			if (!day) return [];
+			const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+			const dayEnd = dayStart + MINUTES_PER_DAY * MS_PER_MINUTE;
+			const eventStart = +new Date(ev.start_at);
+			const eventEnd = +new Date(ev.end_at);
+			const visibleStart = Math.max(eventStart, dayStart);
+			const visibleEnd = Math.min(Math.max(eventEnd, visibleStart), dayEnd);
+			const d = new Date(visibleStart);
 			const startMinutes =
 				d.getHours() * 60 +
 				d.getMinutes() +
 				d.getSeconds() / 60 +
 				d.getMilliseconds() / MS_PER_MINUTE;
-			return [{ ev, top: (startMinutes / 60) * hourPx }];
+			const durationMinutes = Math.max(1, (visibleEnd - visibleStart) / MS_PER_MINUTE);
+			return [
+				{
+					ev,
+					top: (startMinutes / 60) * hourPx,
+					height: Math.max(8, (durationMinutes / 60) * hourPx)
+				}
+			];
 		});
 	}
 
@@ -291,6 +306,7 @@
 							<button
 								class="ev"
 								style:top={`${t.top}px`}
+								style:height={`${t.height}px`}
 								style:background={`rgba(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b}, 1)`}
 								style:color={`rgb(${t.ev.color.r}, ${t.ev.color.g}, ${t.ev.color.b})`}
 								title={t.ev.task_name}
@@ -492,7 +508,7 @@
 		position: absolute;
 		left: 2px;
 		right: 2px;
-		height: calc(var(--hour-h) + 1px);
+		min-height: 8px;
 		display: flex;
 		align-items: center;
 		gap: 8px;

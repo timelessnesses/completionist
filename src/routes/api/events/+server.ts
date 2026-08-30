@@ -144,6 +144,12 @@ export const POST = async ({ request, platform, locals }) => {
 
 	const createdWithRelations = await fetchTaskWithRelations(db, created.id);
 	const createdWithRelationsFirst = createdWithRelations[0] ?? created;
+	const createdAssigneeIds = (createdWithRelationsFirst.assignees ?? []).map(
+		(assignee) => assignee.user_id
+	);
+	const createdRecipientIds = createdAssigneeIds.length
+		? createdAssigneeIds
+		: (await db.select({ id: userTable.id }).from(userTable)).map((recipient) => recipient.id);
 	if (user.admin) {
 		await recordAdminEventAction(db, {
 			actorId: user.user_id,
@@ -164,7 +170,12 @@ export const POST = async ({ request, platform, locals }) => {
 	} catch {}
 
 	await (platform?.env as Env).COMPLETIONIST_QUEUE.send(
-		buildTaskNotificationEnvelope(createdWithRelationsFirst, 'created', locals.user?.name)
+		buildTaskNotificationEnvelope(
+			createdWithRelationsFirst,
+			'created',
+			locals.user?.name,
+			createdRecipientIds
+		)
 	);
 
 	return json(createdWithRelationsFirst, { status: 201 });
@@ -190,14 +201,21 @@ export const PUT = async ({ request, platform, locals, url }) => {
 
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 	const existing = await db.query.task.findFirst({
-		where: and(eq(task.id, id), isNull(task.deleted_at))
+		where: and(eq(task.id, id), isNull(task.deleted_at)),
+		with: { assignees: true }
 	});
 	if (!existing) {
 		throw svelteError(404, 'Event not found');
 	}
 
 	const canEdit = user.admin || existing.owner === user.user_id;
-	if (!canEdit) {
+	const isAssignee = existing.assignees.some((assignee) => assignee.user_id === user.user_id);
+	const updateKeys = Object.keys(body) as Array<keyof UpdateBody>;
+	const isCompletionOnly =
+		body.completed !== undefined &&
+		updateKeys.every((key) => key === 'completed' || key === 'status') &&
+		(body.status === undefined || body.status === 'todo' || body.status === 'completed');
+	if (!canEdit && !(isAssignee && isCompletionOnly)) {
 		throw svelteError(403, 'Forbidden');
 	}
 	const auditBefore = user.admin
@@ -332,7 +350,12 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	}
 
 	await (platform?.env as Env).COMPLETIONIST_QUEUE.send(
-		buildTaskNotificationEnvelope(updated, 'updated', locals.user?.name)
+		buildTaskNotificationEnvelope(
+			updated,
+			'updated',
+			locals.user?.name,
+			(updated.assignees ?? []).map((assignee) => assignee.user_id)
+		)
 	);
 
 	return json(updated, { status: 200 });

@@ -9,13 +9,15 @@
 		running = [],
 		assigned = [],
 		late = [],
-		currentTime = Date.now()
+		currentTime = Date.now(),
+		onSelectEvent
 	}: {
 		upcoming: RichTask[];
 		running?: RichTask[];
 		assigned?: RichTask[];
 		late?: RichTask[];
 		currentTime?: number;
+		onSelectEvent?: (event: RichTask) => void;
 	} = $props();
 
 	function timeLabel(d: Date): string {
@@ -46,6 +48,7 @@
 				class="card running-card"
 				style:--item-index={index}
 				aria-label={`Running task: ${ev.task_name}`}
+				onclick={() => onSelectEvent?.(ev)}
 			>
 				<span class="bar" style:background={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`}
 				></span>
@@ -74,6 +77,7 @@
 				class="card assigned-card"
 				style:--item-index={index}
 				aria-label={`Assigned task: ${ev.task_name}`}
+				onclick={() => onSelectEvent?.(ev)}
 			>
 				<span class="bar" style:background={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`}
 				></span>
@@ -96,7 +100,12 @@
 		</div>
 		{#each late.slice(0, 5) as ev, index (ev.id)}
 			{@const due = new Date(ev.end_at)}
-			<button class="card late-card" style:--item-index={index}>
+			<button
+				class="card late-card"
+				style:--item-index={index}
+				aria-label={`Late task: ${ev.task_name}`}
+				onclick={() => onSelectEvent?.(ev)}
+			>
 				<span class="bar"></span>
 				<span class="body">
 					<span class="title">{ev.task_name}</span>
@@ -115,7 +124,12 @@
 
 	{#each upcoming as ev, index (ev.id)}
 		{@const start = new Date(ev.start_at)}
-		<button class="card" style:--item-index={index}>
+		<button
+			class="card"
+			style:--item-index={index}
+			aria-label={`Upcoming event: ${ev.task_name}`}
+			onclick={() => onSelectEvent?.(ev)}
+		>
 			<span class="bar" style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
 			></span>
 			<span class="body">

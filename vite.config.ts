@@ -37,7 +37,7 @@ export default defineConfig({
 		SvelteKitPWA({
 			strategies: 'injectManifest',
 			srcDir: 'src',
-			filename: 'sw.js',
+			filename: 'service-worker.js',
 			injectManifest: {
 				injectionPoint: undefined
 			},

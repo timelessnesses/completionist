@@ -38,6 +38,8 @@
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
 	let createOpen = $state(false);
+	let miniEvent = $state<RichTask | null>(null);
+	let miniEventOpen = $state(false);
 	let taskBoardOpen = $state(false);
 	let selectedTaskId = $state<string | null>(null);
 	let taskSearch = $state('');
@@ -425,6 +427,15 @@
 		return (task.assignees ?? []).some((assignee) => assignee.user_id === viewerId);
 	}
 
+	function canEditEvent(task: RichTask): boolean {
+		return isAdmin || (!!viewerId && task.owner === viewerId);
+	}
+
+	function openMiniEvent(task: RichTask) {
+		miniEvent = task;
+		miniEventOpen = true;
+	}
+
 	function syncTaskDraft(task: RichTask | null) {
 		if (!task) {
 			taskDraft = {
@@ -752,6 +763,7 @@
 				late={lateTasks}
 				{currentTime}
 				onCreate={() => (createOpen = true)}
+				onSelectEvent={openMiniEvent}
 			/>
 		</div>
 
@@ -796,6 +808,23 @@
 		<EventDialog
 			bind:open={createOpen}
 			oncreated={onCreated}
+			tags={filters}
+			{users}
+			tasks={events}
+		/>
+		<EventDialog
+			bind:open={miniEventOpen}
+			event={miniEvent}
+			canEdit={miniEvent ? canEditEvent(miniEvent) : false}
+			canComplete={miniEvent ? canComplete(miniEvent) : false}
+			onupdated={(event) => {
+				miniEvent = event;
+				onUpdated(event);
+			}}
+			ondeleted={(id) => {
+				miniEvent = null;
+				onDeleted(id);
+			}}
 			tags={filters}
 			{users}
 			tasks={events}
@@ -967,7 +996,11 @@
 							</label>
 
 							<label class="row">
-								<input type="checkbox" bind:checked={taskDraft.completed} disabled={taskBusy} />
+								<input
+									type="checkbox"
+									bind:checked={taskDraft.completed}
+									disabled={taskBusy || !canComplete(selectedTask)}
+								/>
 								<span>Completed</span>
 							</label>
 

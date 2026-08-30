@@ -31,6 +31,9 @@ export async function queue(batch: MessageBatch, env: Env, ctx: ExecutionContext
 			batch.messages.map(async (message) => {
 				const body = message.body;
 				if (isTaskNotificationEnvelope(body)) {
+					if (body.deliver.websocket) {
+						await env.WS_QUEUE.send(body);
+					}
 					if (body.deliver.webpush) {
 						await env.WEBPUSH_QUEUE.send(body);
 					}
@@ -141,13 +144,19 @@ function reminderHtml(taskName: string, message: string) {
 async function handleWebsocketMessage(batch: MessageBatch, env: Env, _ctx: ExecutionContext) {
 	const stub = env.GlobalWS.getByName('global_ws');
 	for (const message of batch.messages) {
+		const isTargeted = isTaskNotificationEnvelope(message.body);
 		const payload =
 			typeof message.body === 'string' ? message.body : JSON.stringify(message.body ?? null);
-		await stub.fetch('https://global-ws.internal/broadcast', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: payload
-		});
+		await stub.fetch(
+			isTargeted
+				? 'https://global-ws.internal/user-notification'
+				: 'https://global-ws.internal/broadcast',
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: payload
+			}
+		);
 		message.ack();
 	}
 }

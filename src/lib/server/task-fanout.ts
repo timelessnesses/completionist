@@ -38,6 +38,7 @@ export type TaskNotificationEnvelope = {
 	data: Record<string, string>;
 	recipient_user_ids: string[];
 	deliver: {
+		websocket: boolean;
 		webpush: boolean;
 		email: boolean;
 		fcm: boolean;
@@ -69,9 +70,11 @@ export function serializeTaskNotification(task: TaskLike): SerializedTaskNotific
 export function buildTaskNotificationEnvelope(
 	task: TaskLike,
 	action: TaskNotificationAction,
-	actorName?: string
+	actorName?: string,
+	recipientUserIds?: string[]
 ): TaskNotificationEnvelope {
 	const serialized = serializeTaskNotification(task);
+	const recipients = uniqueUserIds(recipientUserIds ?? serialized.recipient_user_ids);
 	const dueDate = new Date(task.end_at);
 	const dueLabel = dueDate.toLocaleString('en-US', {
 		dateStyle: 'medium',
@@ -115,8 +118,9 @@ export function buildTaskNotificationEnvelope(
 			end_at: String(serialized.end_at),
 			url: `/?${new URLSearchParams({ notification: 'task', task_id: serialized.id })}`
 		},
-		recipient_user_ids: serialized.recipient_user_ids,
+		recipient_user_ids: recipients,
 		deliver: {
+			websocket: true,
 			webpush: true,
 			email: true,
 			fcm: true
