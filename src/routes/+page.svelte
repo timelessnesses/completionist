@@ -31,7 +31,11 @@
 	import { LocalNotifications } from '@capacitor/local-notifications';
 	import { PushNotifications } from '@capacitor/push-notifications';
 	import { env } from '$env/dynamic/public';
-	import { registerServiceWorker, requestForNotificationPermission } from '$lib/notificationStuff';
+	import {
+		notificationsOptedOut,
+		registerServiceWorker,
+		requestForNotificationPermission
+	} from '$lib/notificationStuff';
 	import { notificationPath } from '$lib/notification-links';
 	import { syncNativeTaskAlarms } from '$lib/task-alarms';
 	import { compareTaskPriority } from '$lib/features/tasks/priority';
@@ -768,10 +772,12 @@
 						await invalidateAll();
 					}
 				);
-				console.log('requesting notification permission for native platform...');
-				await requestForNotificationPermission();
+				if (!notificationsOptedOut()) {
+					console.log('requesting notification permission for native platform...');
+					await requestForNotificationPermission();
+				}
 			} else {
-				if ((await Notification.requestPermission()) === 'granted') {
+				if (!notificationsOptedOut() && (await Notification.requestPermission()) === 'granted') {
 					console.log('notification permission granted, registering service worker...');
 					await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
 				}

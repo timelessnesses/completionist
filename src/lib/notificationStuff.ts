@@ -1,45 +1,91 @@
 import { PushNotifications } from '@capacitor/push-notifications';
 
+const NOTIFICATIONS_OPT_OUT_KEY = 'notifications-opted-out';
+const FCM_TOKEN_KEY = 'fcm-registration-token';
+
+export function notificationsOptedOut() {
+	try {
+		return localStorage.getItem(NOTIFICATIONS_OPT_OUT_KEY) === 'true';
+	} catch {
+		return false;
+	}
+}
+
+function setNotificationsOptedOut(optedOut: boolean) {
+	try {
+		if (optedOut) localStorage.setItem(NOTIFICATIONS_OPT_OUT_KEY, 'true');
+		else localStorage.removeItem(NOTIFICATIONS_OPT_OUT_KEY);
+	} catch {
+		// Storage can be unavailable in private browsing modes.
+	}
+}
+
 export async function requestForNotificationPermission() {
 	console.log('push notifications permission request...');
-	if ((await PushNotifications.checkPermissions()).receive === 'granted') return;
-	console.log('requesting push notifications permission...');
+	setNotificationsOptedOut(false);
 	await PushNotifications.addListener('registration', (token) => {
-		console.log('received FCM registration token:', token.value);
+		console.log('received FCM registration token');
+		try {
+			localStorage.setItem(FCM_TOKEN_KEY, token.value);
+		} catch {
+			// The server registration still works when local storage is unavailable.
+		}
 		fetch('/api/fcm', {
 			method: 'POST',
 			body: JSON.stringify({ token: token.value })
 		});
 	});
 
-	await PushNotifications.requestPermissions();
+	if ((await PushNotifications.checkPermissions()).receive !== 'granted') {
+		console.log('requesting push notifications permission...');
+		await PushNotifications.requestPermissions();
+	}
 	console.log('registering for push notifications...');
 	await PushNotifications.register();
 }
 
 export async function unregisterPushNotifications() {
 	console.log('unregistering push notifications...');
-	await PushNotifications.removeAllListeners();
+	setNotificationsOptedOut(true);
 	await PushNotifications.unregister();
-	await fetch('/api/fcm', {
-		method: 'DELETE'
+	let token = '';
+	try {
+		token = localStorage.getItem(FCM_TOKEN_KEY) ?? '';
+	} catch {
+		// Fall back to deleting every token for this account.
+	}
+	const response = await fetch('/api/fcm', {
+		method: 'DELETE',
+		body: token ? JSON.stringify({ token }) : undefined
 	});
+	if (!response.ok) throw new Error(`Failed to remove FCM subscription (${response.status})`);
+	try {
+		localStorage.removeItem(FCM_TOKEN_KEY);
+	} catch {
+		// Ignore storage cleanup failures after the server token has been removed.
+	}
 }
 
 export async function unregisterServiceWorker() {
 	console.log('unsubscribing from web push...');
+	setNotificationsOptedOut(true);
 	if ('serviceWorker' in navigator) {
-		const registration = await navigator.serviceWorker.getRegistration('/');
-		const subscription = await registration?.pushManager.getSubscription();
-		await subscription?.unsubscribe();
+		const registrations = await navigator.serviceWorker.getRegistrations();
+		for (const registration of registrations) {
+			const subscription = await registration.pushManager.getSubscription();
+			await subscription?.unsubscribe();
+			await registration.unregister();
+		}
 	}
-	await fetch('/api/webpush', {
+	const response = await fetch('/api/webpush', {
 		method: 'DELETE'
 	});
+	if (!response.ok) throw new Error(`Failed to remove web push subscription (${response.status})`);
 }
 
 export async function registerServiceWorker(vapidPublicKey: string) {
 	console.log('registering service worker...');
+	setNotificationsOptedOut(false);
 	if ('serviceWorker' in navigator) {
 		const permission = await Notification.requestPermission();
 		console.log('notification permission:', permission);

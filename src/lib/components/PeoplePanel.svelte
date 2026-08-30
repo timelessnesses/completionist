@@ -26,6 +26,7 @@
 	import { Capacitor, registerPlugin } from '@capacitor/core';
 	import { LocalNotifications } from '@capacitor/local-notifications';
 	import {
+		notificationsOptedOut,
 		registerServiceWorker,
 		requestForNotificationPermission,
 		unregisterPushNotifications,
@@ -372,6 +373,7 @@
 
 	async function showIncomingMessageNotification(message: DirectMessage) {
 		if (message.from_user_id === viewerId) return;
+		if (notificationsOptedOut()) return;
 		const sender =
 			message.from_user?.name ??
 			people.find((p) => p.id === message.from_user_id)?.name ??
@@ -479,21 +481,28 @@
 		}
 	}
 
-	async function notificationPermission(): Promise<boolean> {
+	async function notificationSubscriptionEnabled(): Promise<boolean> {
+		if (notificationsOptedOut()) return false;
 		if (Capacitor.isNativePlatform()) {
 			const permission = await LocalNotifications.checkPermissions();
 			return permission.display === 'granted';
-		} else {
-			return Notification.permission === 'granted';
 		}
+		if (Notification.permission !== 'granted' || !('serviceWorker' in navigator)) return false;
+		const registrations = await navigator.serviceWorker.getRegistrations();
+		for (const registration of registrations) {
+			if (await registration.pushManager.getSubscription()) return true;
+		}
+		return false;
 	}
 
 	let notificationEnabled = $state(false);
 
 	onMount(() => {
-		setInterval(async () => {
-			notificationEnabled = await notificationPermission();
+		void notificationSubscriptionEnabled().then((enabled) => (notificationEnabled = enabled));
+		const notificationStatusTimer = window.setInterval(async () => {
+			notificationEnabled = await notificationSubscriptionEnabled();
 		}, 1000);
+		return () => window.clearInterval(notificationStatusTimer);
 	});
 
 	function isNativePlatform(): boolean {
@@ -808,23 +817,21 @@
 			<button
 				class="setting-action"
 				onclick={async () => {
-					if (await notificationPermission()) {
+					if (await notificationSubscriptionEnabled()) {
 						if (isNativePlatform()) {
 							await LocalNotifications.cancelAll();
-							notificationEnabled = false;
 							await unregisterPushNotifications();
 						} else {
-							const sw = await navigator.serviceWorker.ready;
 							await unregisterServiceWorker();
 						}
+						notificationEnabled = false;
 					} else {
 						if (isNativePlatform()) {
 							await requestForNotificationPermission();
-							notificationEnabled = await notificationPermission();
 						} else {
 							await registerServiceWorker(env.PUBLIC_VAPID_PUBLIC);
-							notificationEnabled = await notificationPermission();
 						}
+						notificationEnabled = await notificationSubscriptionEnabled();
 					}
 				}}
 			>

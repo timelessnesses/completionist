@@ -50,23 +50,22 @@ export const DELETE = async ({ request, platform, locals }) => {
 		throw svelteError(401, 'Unauthorized');
 	}
 
-	let body: RegisterBody;
+	let body: RegisterBody | null = null;
 	try {
 		body = await request.json();
 	} catch {
-		throw svelteError(400, 'Invalid JSON');
-	}
-
-	if (!body || typeof body.token !== 'string' || !body.token.trim()) {
-		throw svelteError(400, 'token is required');
+		// An empty body means unsubscribe this account from every registered FCM token.
 	}
 
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
-	await db
-		.delete(fcm_tokens)
-		.where(
-			and(eq(fcm_tokens.user_id, locals.user.user_id), eq(fcm_tokens.token, body.token.trim()))
-		);
+	const token = body?.token?.trim();
+	if (token) {
+		await db
+			.delete(fcm_tokens)
+			.where(and(eq(fcm_tokens.user_id, locals.user.user_id), eq(fcm_tokens.token, token)));
+	} else {
+		await db.delete(fcm_tokens).where(eq(fcm_tokens.user_id, locals.user.user_id));
+	}
 
 	return json({ ok: true });
 };
