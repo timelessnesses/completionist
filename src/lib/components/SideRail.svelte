@@ -49,7 +49,7 @@
 	</div>
 
 	<MiniMonth {events} />
-	<UpcomingList {upcoming} {running} {assigned} {late} {currentTime} {onSelectEvent} />
+	<UpcomingList {events} {upcoming} {running} {assigned} {late} {currentTime} {onSelectEvent} />
 </aside>
 
 <style>

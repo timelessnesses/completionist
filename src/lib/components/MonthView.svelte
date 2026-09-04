@@ -5,7 +5,6 @@
 		mdiChevronRight,
 		mdiMenu,
 		mdiAccountMultipleOutline,
-		mdiCircleMedium,
 		mdiCheckboxMarkedCircleOutline,
 		mdiTriangleOutline
 	} from '@mdi/js';
@@ -18,9 +17,9 @@
 		buildMonthGrid,
 		isSameDay,
 		addMonths,
-		addDays,
-		toDateKey as toKey
+		addDays
 	} from '$lib/features/calendar/date';
+	import { layoutMonthWeeks } from '$lib/features/calendar/month-layout';
 	import type { RichTask, FilterTag, UserSummary } from '$lib/features/tasks/types';
 
 	type View = 'Month' | 'Week';
@@ -72,45 +71,10 @@
 			return tagIds.some((id) => activeFilters.has(id));
 		});
 	});
-	const eventsByDay = $derived.by(() => {
-		const map = new Map<string, RichTask[]>();
-		for (const ev of filteredEvents) {
-			const start = new Date(ev.start_at);
-			const end = new Date(ev.end_at);
-			const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-			const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-			let guard = 0;
-			while (day <= last && guard++ < 400) {
-				const key = toKey(day);
-				const bucket = map.get(key) ?? [];
-				bucket.push(ev);
-				map.set(key, bucket);
-				day.setDate(day.getDate() + 1);
-			}
-		}
-		return map;
-	});
+	const monthWeeks = $derived(layoutMonthWeeks(cells, filteredEvents));
 
 	function colorHex(c: { r: number; g: number; b: number }): string {
 		return `#${[c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
-	}
-
-	function dayOnly(d: Date): Date {
-		return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-	}
-
-	function spansPrevDay(ev: RichTask, day: Date): boolean {
-		const prev = addDays(dayOnly(day), -1);
-		const start = dayOnly(new Date(ev.start_at));
-		const end = dayOnly(new Date(ev.end_at));
-		return prev >= start && prev <= end;
-	}
-
-	function spansNextDay(ev: RichTask, day: Date): boolean {
-		const next = addDays(dayOnly(day), 1);
-		const start = dayOnly(new Date(ev.start_at));
-		const end = dayOnly(new Date(ev.end_at));
-		return next >= start && next <= end;
 	}
 
 	function openEvent(ev: RichTask) {
@@ -217,50 +181,51 @@
 
 	{#if view === 'Month'}
 		<div class="grid">
-			{#each WEEKDAYS as d}
-				<div class="dow">{d}</div>
-			{/each}
-			{#each cells as cell (cell.key)}
-				{@const dayEvents = eventsByDay.get(cell.key) ?? []}
-				<div class="cell" class:dim={!cell.inMonth}>
-					<span class="daynum" class:today={isSameDay(cell.date, new Date())}
-						>{cell.date.getDate()}</span
+			<div class="weekday-row">
+				{#each WEEKDAYS as d}
+					<div class="dow">{d}</div>
+				{/each}
+			</div>
+			<div class="month-weeks">
+				{#each monthWeeks as week (week.key)}
+					<div
+						class="month-week"
+						style:grid-template-rows={`30px repeat(${week.laneCount}, 24px) minmax(4px, 1fr)`}
 					>
-					<div class="events">
-						{#each dayEvents.slice(0, 3) as ev (ev.id)}
+						{#each week.cells as cell, index (cell.key)}
+							<div class="cell" class:dim={!cell.inMonth} style:grid-column={index + 1}>
+								<span class="daynum" class:today={isSameDay(cell.date, new Date())}
+									>{cell.date.getDate()}</span
+								>
+							</div>
+						{/each}
+						{#each week.bars as bar (bar.event.id)}
 							<button
 								class="event"
-								class:cont-prev={spansPrevDay(ev, cell.date)}
-								class:cont-next={spansNextDay(ev, cell.date)}
-								style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
-								style:color={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`}
-								title={ev.task_name}
-								onclick={() => openEvent(ev)}
+								class:continues-before={bar.continuesBefore}
+								class:continues-after={bar.continuesAfter}
+								style:grid-column={`${bar.startColumn} / span ${bar.span}`}
+								style:grid-row={bar.lane + 2}
+								style:background={`rgba(${bar.event.color.r}, ${bar.event.color.g}, ${bar.event.color.b}, 0.15)`}
+								style:color={`rgb(${bar.event.color.r}, ${bar.event.color.g}, ${bar.event.color.b})`}
+								title={bar.event.task_name}
+								onclick={() => openEvent(bar.event)}
 							>
-								<span class="event-label">
-									{#if !spansPrevDay(ev, cell.date)}
-										{ev.task_name}
-									{:else}
-										<MdiIcon path={mdiCircleMedium} size={12} />
-									{/if}
-								</span>
-								{#if ev.completed}
+								<span class="event-label">{bar.event.task_name}</span>
+								{#if bar.event.completed}
 									<span class="event-status done" aria-hidden="true">
 										<MdiIcon path={mdiCheckboxMarkedCircleOutline} size={14} />
 									</span>
-								{:else if (ev.dependents?.length ?? 0) > 0}
+								{:else if (bar.event.dependents?.length ?? 0) > 0}
 									<span class="event-status blocked" aria-hidden="true">
 										<MdiIcon path={mdiTriangleOutline} size={14} />
 									</span>
 								{/if}
 							</button>
 						{/each}
-						{#if dayEvents.length > 3}
-							<span class="more">+{dayEvents.length - 3} more</span>
-						{/if}
 					</div>
-				</div>
-			{/each}
+				{/each}
+			</div>
 		</div>
 	{:else}
 		<div class="week-wrap">
@@ -433,11 +398,31 @@
 		min-height: 0;
 		min-width: 0;
 		width: 100%;
-		display: grid;
-		grid-template-columns: repeat(7, 1fr);
-		grid-template-rows: 28px repeat(6, minmax(0, 1fr));
+		display: flex;
+		flex-direction: column;
 		border-top: 1px solid #e1e3e1;
-		overflow: hidden;
+		overflow: auto;
+	}
+	.weekday-row,
+	.month-week {
+		display: grid;
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+	}
+	.weekday-row {
+		flex: 0 0 28px;
+		position: sticky;
+		top: 0;
+		z-index: 3;
+		background: var(--color-background);
+	}
+	.month-weeks {
+		flex: 1;
+		display: grid;
+		grid-template-rows: repeat(6, minmax(96px, 1fr));
+	}
+	.month-week {
+		min-height: 96px;
+		position: relative;
 	}
 	.dow {
 		font-size: 11px;
@@ -450,17 +435,17 @@
 	.dow:nth-child(7n + 1) {
 		border-left: 0;
 	}
-	.cell {
+	.month-week .cell {
+		grid-row: 1 / -1;
+		position: relative;
+		z-index: 0;
 		min-width: 0;
 		min-height: 0;
-		display: flex;
-		flex-direction: column;
 		border-left: 1px solid #e1e3e1;
 		border-top: 1px solid #e1e3e1;
 		padding: 4px 6px;
-		overflow: hidden;
 	}
-	.cell:nth-child(7n + 8) {
+	.month-week .cell:first-child {
 		border-left: 0;
 	}
 	.cell.dim .daynum {
@@ -485,17 +470,11 @@
 		color: #fff;
 		font-weight: 600;
 	}
-	.events {
-		flex: 1;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		margin-top: 4px;
-		overflow: hidden;
-	}
 	.event {
-		flex: 0 0 auto;
+		z-index: 1;
+		align-self: center;
+		min-width: 0;
+		margin: 1px 6px;
 		border: 0;
 		cursor: pointer;
 		text-align: left;
@@ -525,23 +504,15 @@
 	.event-status.blocked {
 		color: #d93025;
 	}
-	.event.cont-prev {
-		margin-left: -6px;
-		padding-left: 8px;
+	.event.continues-before {
+		margin-left: 0;
 		border-top-left-radius: 0;
 		border-bottom-left-radius: 0;
 	}
-	.event.cont-next {
-		margin-right: -6px;
-		padding-right: 8px;
+	.event.continues-after {
+		margin-right: 0;
 		border-top-right-radius: 0;
 		border-bottom-right-radius: 0;
-	}
-	.more {
-		flex: 0 0 auto;
-		font-size: 10.5px;
-		color: #5f6368;
-		padding-left: 6px;
 	}
 	.week-wrap {
 		flex: 1 1 0;
@@ -588,8 +559,8 @@
 		.chip {
 			flex-shrink: 0;
 		}
-		.grid {
-			grid-template-rows: 24px repeat(6, minmax(0, 1fr));
+		.weekday-row {
+			flex-basis: 24px;
 		}
 		.dow {
 			font-size: 10px;
@@ -604,21 +575,16 @@
 			height: 20px;
 			width: 20px;
 		}
-		.events {
-			gap: 2px;
-			margin-top: 2px;
-		}
 		.event {
 			font-size: 10px;
 			padding: 1px 4px;
+			margin-inline: 3px;
 		}
-		.event.cont-prev {
-			margin-left: -3px;
-			padding-left: 5px;
+		.event.continues-before {
+			margin-left: 0;
 		}
-		.event.cont-next {
-			margin-right: -3px;
-			padding-right: 5px;
+		.event.continues-after {
+			margin-right: 0;
 		}
 	}
 </style>

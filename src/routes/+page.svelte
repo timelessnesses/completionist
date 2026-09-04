@@ -22,6 +22,7 @@
 	} from '@mdi/js';
 	import type { PageProps } from './$types';
 	import type { RichTask, UserSummary } from '$lib/features/tasks/types';
+	import { isProjectLike } from '$lib/features/tasks/project';
 	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
 	import { onMount, tick } from 'svelte';
 	import { subscribeWS } from '$lib/websocket.svelte';
@@ -283,11 +284,7 @@
 	});
 	const taskCount = $derived(events.length);
 	const completedCount = $derived(events.filter((task) => !!task.completed).length);
-	const projectCount = $derived(
-		events.filter(
-			(task) => (task.subtasks?.length ?? 0) > 0 || (task.dependencies?.length ?? 0) > 0
-		).length
-	);
+	const projectCount = $derived(events.filter(isProjectLike).length);
 	const selectedTask = $derived(
 		(selectedTaskId ? taskMap.get(selectedTaskId) : null) ??
 			activeTasks.find((task) => !task.completed) ??

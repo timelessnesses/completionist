@@ -13,6 +13,7 @@ export const POST = async ({ request, platform, url }) => {
 
 	const body = (await request.json().catch(() => ({}))) as DebugEventRequest;
 	const startedAt = Date.now();
+	const startsAt = startedAt + 10_000;
 	const payload = {
 		type: 'preview_debug_event',
 		event: {
@@ -20,8 +21,9 @@ export const POST = async ({ request, platform, url }) => {
 			taskName: body.taskName?.trim().slice(0, 160) || 'Preview test event'
 		},
 		startedAt,
-		introEndsAt: startedAt + 2_400,
-		endsAt: startedAt + 92_400
+		startsAt,
+		introEndsAt: startsAt + 2_400,
+		endsAt: startsAt + 92_400
 	};
 
 	const response = await (platform?.env as Env).GlobalWS.getByName('global_ws').fetch(

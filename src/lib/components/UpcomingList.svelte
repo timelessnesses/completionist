@@ -2,9 +2,16 @@
 	import { prettyDate, toDateKey as toKey } from '$lib/features/calendar/date';
 	import type { RichTask } from '$lib/features/tasks/types';
 	import MdiIcon from './MdiIcon.svelte';
-	import { mdiAccountCheckOutline, mdiPlayCircleOutline } from '@mdi/js';
+	import {
+		mdiAccountCheckOutline,
+		mdiChevronDown,
+		mdiChevronRight,
+		mdiFolderOutline,
+		mdiPlayCircleOutline
+	} from '@mdi/js';
 
 	const {
+		events,
 		upcoming,
 		running = [],
 		assigned = [],
@@ -12,6 +19,7 @@
 		currentTime = Date.now(),
 		onSelectEvent
 	}: {
+		events: RichTask[];
 		upcoming: RichTask[];
 		running?: RichTask[];
 		assigned?: RichTask[];
@@ -19,6 +27,66 @@
 		currentTime?: number;
 		onSelectEvent?: (event: RichTask) => void;
 	} = $props();
+
+	type ListKind = 'running' | 'late' | 'upcoming';
+	type ListEntry =
+		| { key: string; project: RichTask; tasks: RichTask[] }
+		| { key: string; project: null; tasks: [RichTask] };
+	const eventMap = $derived.by(() => new Map(events.map((event) => [event.id, event])));
+	let foldedProjects = $state(new Set<string>());
+
+	function parentProject(event: RichTask): RichTask | null {
+		let parentId = event.parent;
+		const visited = new Set<string>();
+		while (parentId && !visited.has(parentId)) {
+			visited.add(parentId);
+			const parent = eventMap.get(parentId);
+			if (!parent) return null;
+			return parent;
+		}
+		return null;
+	}
+
+	function listEntries(tasks: RichTask[], limit?: number): ListEntry[] {
+		const visible = limit ? tasks.slice(0, limit) : tasks;
+		const groupedProjectIds = new Set(
+			visible
+				.map(parentProject)
+				.filter((project): project is RichTask => !!project)
+				.map((project) => project.id)
+		);
+		const entries: ListEntry[] = [];
+		const groups = new Map<string, Extract<ListEntry, { project: RichTask }>>();
+
+		for (const task of visible) {
+			const project = parentProject(task);
+			const groupProject = project ?? (groupedProjectIds.has(task.id) ? task : null);
+			if (!groupProject) {
+				entries.push({ key: `task:${task.id}`, project: null, tasks: [task] });
+				continue;
+			}
+
+			let group = groups.get(groupProject.id);
+			if (!group) {
+				group = { key: `project:${groupProject.id}`, project: groupProject, tasks: [] };
+				groups.set(groupProject.id, group);
+				entries.push(group);
+			}
+			if (task.id !== groupProject.id) group.tasks.push(task);
+		}
+		return entries;
+	}
+
+	function foldKey(kind: ListKind, projectId: string): string {
+		return `${kind}:${projectId}`;
+	}
+
+	function toggleProject(kind: ListKind, projectId: string) {
+		const key = foldKey(kind, projectId);
+		const next = new Set(foldedProjects);
+		next.has(key) ? next.delete(key) : next.add(key);
+		foldedProjects = next;
+	}
 
 	function timeLabel(d: Date): string {
 		return `${d.getHours()}:${`${d.getMinutes()}`.padStart(2, '0')}`;
@@ -32,7 +100,82 @@
 		if (hours < 24) return `${hours}h${remainder ? ` ${remainder}m` : ''} left`;
 		return `${Math.ceil(hours / 24)}d left`;
 	}
+
+	function itemWhen(event: RichTask, kind: ListKind): string {
+		if (kind === 'running') {
+			const end = new Date(event.end_at);
+			return `${timeRemaining(end)} · ends ${timeLabel(end)}`;
+		}
+		const date = new Date(kind === 'late' ? event.end_at : event.start_at);
+		return `${kind === 'late' ? 'Due ' : ''}${prettyDate(toKey(date))}${event.all_day ? '' : `, ${timeLabel(date)}`}`;
+	}
 </script>
+
+{#snippet taskCard(event: RichTask, index: number, kind: ListKind)}
+	<button
+		class="card"
+		class:running-card={kind === 'running'}
+		class:late-card={kind === 'late'}
+		style:--item-index={index}
+		aria-label={`${kind} task: ${event.task_name}`}
+		onclick={() => onSelectEvent?.(event)}
+	>
+		<span
+			class="bar"
+			style:background={kind === 'late'
+				? '#d93025'
+				: kind === 'running'
+					? `rgb(${event.color.r}, ${event.color.g}, ${event.color.b})`
+					: `rgba(${event.color.r}, ${event.color.g}, ${event.color.b}, 0.15)`}
+		></span>
+		<span class="body">
+			<span class="title-row">
+				<span class="title">{event.task_name}</span>
+				{#if kind === 'running'}<span class="live-dot" aria-hidden="true"></span>{/if}
+			</span>
+			<span class="when" class:running-time={kind === 'running'}>{itemWhen(event, kind)}</span>
+		</span>
+	</button>
+{/snippet}
+
+{#snippet groupedTasks(tasks: RichTask[], kind: ListKind, limit?: number)}
+	{#each listEntries(tasks, limit) as entry, index (entry.key)}
+		{#if entry.project}
+			{@const key = foldKey(kind, entry.project.id)}
+			<div class="project-group">
+				<div class="project-header">
+					<button
+						class="fold"
+						type="button"
+						aria-label={foldedProjects.has(key) ? 'Expand project tasks' : 'Collapse project tasks'}
+						aria-expanded={!foldedProjects.has(key)}
+						onclick={() => toggleProject(kind, entry.project.id)}
+					>
+						<MdiIcon path={foldedProjects.has(key) ? mdiChevronRight : mdiChevronDown} size={16} />
+					</button>
+					<button
+						class="project-title"
+						type="button"
+						onclick={() => onSelectEvent?.(entry.project)}
+					>
+						<MdiIcon path={mdiFolderOutline} size={14} />
+						<span>{entry.project.task_name}</span>
+						<small>{entry.tasks.length}</small>
+					</button>
+				</div>
+				{#if !foldedProjects.has(key)}
+					<div class="project-children">
+						{#each entry.tasks as event, childIndex (event.id)}
+							{@render taskCard(event, index + childIndex, kind)}
+						{/each}
+					</div>
+				{/if}
+			</div>
+		{:else}
+			{@render taskCard(entry.tasks[0], index, kind)}
+		{/if}
+	{/each}
+{/snippet}
 
 <div class="upcoming">
 	{#if running.length}
@@ -42,25 +185,7 @@
 			>
 			<span class="count">{running.length}</span>
 		</div>
-		{#each running.slice(0, 5) as ev, index (ev.id)}
-			{@const end = new Date(ev.end_at)}
-			<button
-				class="card running-card"
-				style:--item-index={index}
-				aria-label={`Running task: ${ev.task_name}`}
-				onclick={() => onSelectEvent?.(ev)}
-			>
-				<span class="bar" style:background={`rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`}
-				></span>
-				<span class="body">
-					<span class="title-row">
-						<span class="title">{ev.task_name}</span>
-						<span class="live-dot" aria-hidden="true"></span>
-					</span>
-					<span class="when running-time">{timeRemaining(end)} · ends {timeLabel(end)}</span>
-				</span>
-			</button>
-		{/each}
+		{@render groupedTasks(running, 'running', 5)}
 	{/if}
 
 	{#if assigned.length}
@@ -98,23 +223,7 @@
 			<span>LATE / UNCOMPLETED</span>
 			<span class="count">{late.length}</span>
 		</div>
-		{#each late.slice(0, 5) as ev, index (ev.id)}
-			{@const due = new Date(ev.end_at)}
-			<button
-				class="card late-card"
-				style:--item-index={index}
-				aria-label={`Late task: ${ev.task_name}`}
-				onclick={() => onSelectEvent?.(ev)}
-			>
-				<span class="bar"></span>
-				<span class="body">
-					<span class="title">{ev.task_name}</span>
-					<span class="when"
-						>Due {prettyDate(toKey(due))}{ev.all_day ? '' : `, ${timeLabel(due)}`}</span
-					>
-				</span>
-			</button>
-		{/each}
+		{@render groupedTasks(late, 'late', 5)}
 	{/if}
 
 	<div class="upcoming-head">
@@ -122,24 +231,7 @@
 		<span class="count">{upcoming.length} total</span>
 	</div>
 
-	{#each upcoming as ev, index (ev.id)}
-		{@const start = new Date(ev.start_at)}
-		<button
-			class="card"
-			style:--item-index={index}
-			aria-label={`Upcoming event: ${ev.task_name}`}
-			onclick={() => onSelectEvent?.(ev)}
-		>
-			<span class="bar" style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
-			></span>
-			<span class="body">
-				<span class="title">{ev.task_name}</span>
-				<span class="when">
-					{prettyDate(toKey(start))}{ev.all_day ? '' : `, ${timeLabel(start)}`}
-				</span>
-			</span>
-		</button>
-	{/each}
+	{@render groupedTasks(upcoming, 'upcoming')}
 </div>
 
 <style>
@@ -173,6 +265,68 @@
 	.count {
 		font-weight: 400;
 		/* color: #747775; */
+	}
+	.project-group {
+		display: grid;
+		gap: 6px;
+	}
+	.project-header {
+		display: grid;
+		grid-template-columns: 28px minmax(0, 1fr);
+		align-items: center;
+		min-width: 0;
+	}
+	.fold,
+	.project-title {
+		border: 0;
+		background: transparent;
+		color: var(--color-foreground);
+		cursor: pointer;
+	}
+	.fold {
+		display: grid;
+		width: 28px;
+		height: 28px;
+		place-items: center;
+		border-radius: 50%;
+	}
+	.fold:hover {
+		background: var(--color-muted);
+	}
+	.project-title {
+		display: grid;
+		grid-template-columns: 16px minmax(0, 1fr) auto;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 7px;
+		border-radius: 8px;
+		text-align: left;
+		font-size: 12px;
+		font-weight: 700;
+	}
+	.project-title:hover {
+		background: var(--color-muted);
+	}
+	.project-title span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.project-title small {
+		min-width: 19px;
+		padding: 2px 5px;
+		border-radius: 999px;
+		background: var(--color-muted);
+		text-align: center;
+		font-size: 9px;
+		font-weight: 600;
+	}
+	.project-children {
+		display: grid;
+		gap: 8px;
+		margin-left: 14px;
+		padding-left: 12px;
+		border-left: 1px solid #d7dce2;
 	}
 	.card {
 		display: flex;

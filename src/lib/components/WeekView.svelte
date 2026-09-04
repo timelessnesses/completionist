@@ -10,6 +10,7 @@
 	} from '$lib/features/calendar/date';
 	import MdiIcon from './MdiIcon.svelte';
 	import { mdiCheckboxMarkedCircleOutline, mdiTriangleOutline } from '@mdi/js';
+	import { isProjectLike } from '$lib/features/tasks/project';
 
 	import type { RichTask } from '$lib/features/tasks/types';
 
@@ -41,6 +42,7 @@
 	const HOURS = Array.from({ length: 24 }, (_, h) => h);
 	const MS_PER_MINUTE = 60_000;
 	const MINUTES_PER_DAY = 1_440;
+	const MS_PER_DAY = MINUTES_PER_DAY * MS_PER_MINUTE;
 
 	const followEnabled = $derived(followCurrentTime ?? true);
 
@@ -64,6 +66,73 @@
 		}
 		return map;
 	});
+
+	function dayTimestamp(value: Date | number): number {
+		const date = new Date(value);
+		return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+	}
+
+	function coveredDayCount(ev: RichTask): number {
+		const start = dayTimestamp(ev.start_at);
+		const end = Math.max(start, dayTimestamp(ev.end_at));
+		return Math.round((end - start) / MS_PER_DAY) + 1;
+	}
+
+	function belongsInTopStrip(ev: RichTask): boolean {
+		return !!ev.all_day || isProjectLike(ev) || coveredDayCount(ev) >= 2;
+	}
+
+	type TopStripEvent = {
+		ev: RichTask;
+		startColumn: number;
+		span: number;
+		lane: number;
+		continuesBefore: boolean;
+		continuesAfter: boolean;
+	};
+
+	const topStripEvents = $derived.by(() => {
+		const firstDay = dayTimestamp(weekStart);
+		const lastDay = dayTimestamp(days[6]);
+		const positioned: TopStripEvent[] = events
+			.filter(belongsInTopStrip)
+			.flatMap((ev) => {
+				const eventStart = dayTimestamp(ev.start_at);
+				const eventEnd = Math.max(eventStart, dayTimestamp(ev.end_at));
+				if (eventEnd < firstDay || eventStart > lastDay) return [];
+
+				const visibleStart = Math.max(eventStart, firstDay);
+				const visibleEnd = Math.min(eventEnd, lastDay);
+				const startIndex = Math.round((visibleStart - firstDay) / MS_PER_DAY);
+				const endIndex = Math.round((visibleEnd - firstDay) / MS_PER_DAY);
+				return [
+					{
+						ev,
+						startColumn: startIndex + 2,
+						span: endIndex - startIndex + 1,
+						lane: 0,
+						continuesBefore: eventStart < firstDay,
+						continuesAfter: eventEnd > lastDay
+					}
+				];
+			})
+			.sort((a, b) => {
+				const projectOrder = Number(isProjectLike(b.ev)) - Number(isProjectLike(a.ev));
+				return projectOrder || b.span - a.span || a.startColumn - b.startColumn;
+			});
+
+		const laneEnds: number[] = [];
+		for (const item of positioned) {
+			const endColumn = item.startColumn + item.span - 1;
+			let lane = laneEnds.findIndex((occupiedThrough) => occupiedThrough < item.startColumn);
+			if (lane < 0) lane = laneEnds.length;
+			item.lane = lane;
+			laneEnds[lane] = endColumn;
+		}
+
+		return positioned;
+	});
+	const topStripRowCount = $derived(Math.max(1, ...topStripEvents.map((event) => event.lane + 1)));
 
 	let nowMs = $state(Date.now());
 	let hourPx = $state(52);
@@ -90,7 +159,7 @@
 	function timedEvents(key: string) {
 		const positioned = (eventsByDay.get(key) ?? [])
 			.flatMap((ev) => {
-				if (ev.all_day) return [];
+				if (belongsInTopStrip(ev)) return [];
 				const day = days.find((candidate) => toKey(candidate) === key);
 				if (!day) return [];
 				const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
@@ -147,11 +216,6 @@
 			left: (event.lane / event.laneCount) * 100,
 			width: 100 / event.laneCount
 		}));
-	}
-
-	/** All-day events, rendered in the all-day strip like Google Calendar. */
-	function allDayEvents(key: string) {
-		return (eventsByDay.get(key) ?? []).filter((ev) => !!ev.all_day);
 	}
 
 	function timeLabel(ev: RichTask): string {
@@ -283,27 +347,30 @@
 		</div>
 
 		<!-- All-day strip -->
-		<div class="band allday-row">
+		<div class="band allday-row" style:grid-template-rows={`repeat(${topStripRowCount}, 24px)`}>
 			<div class="gutter"><span>All day</span></div>
-			{#each days as d (toKey(d))}
-				<div class="ad-col">
-					{#each allDayEvents(toKey(d)) as ev (ev.id)}
-						<button
-							class="ad-ev"
-							class:completed={!!ev.completed}
-							style:background={ev.completed
-								? 'rgba(107, 114, 128, 0.16)'
-								: `rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.15)`}
-							style:color={ev.completed
-								? 'rgb(107, 114, 128)'
-								: `rgb(${ev.color.r}, ${ev.color.g}, ${ev.color.b})`}
-							title={ev.task_name}
-							onclick={() => onSelectEvent?.(ev)}
-						>
-							{ev.task_name}
-						</button>
-					{/each}
-				</div>
+			{#each days as d, index (toKey(d))}
+				<div class="ad-cell" style:grid-column={index + 2}></div>
+			{/each}
+			{#each topStripEvents as item (item.ev.id)}
+				<button
+					class="ad-ev"
+					class:completed={!!item.ev.completed}
+					class:continues-before={item.continuesBefore}
+					class:continues-after={item.continuesAfter}
+					style:grid-column={`${item.startColumn} / span ${item.span}`}
+					style:grid-row={item.lane + 1}
+					style:background={item.ev.completed
+						? 'rgba(107, 114, 128, 0.16)'
+						: `rgba(${item.ev.color.r}, ${item.ev.color.g}, ${item.ev.color.b}, 0.15)`}
+					style:color={item.ev.completed
+						? 'rgb(107, 114, 128)'
+						: `rgb(${item.ev.color.r}, ${item.ev.color.g}, ${item.ev.color.b})`}
+					title={item.ev.task_name}
+					onclick={() => onSelectEvent?.(item.ev)}
+				>
+					{item.ev.task_name}
+				</button>
 			{/each}
 		</div>
 	</div>
@@ -437,24 +504,28 @@
 	.allday-row {
 		min-height: 26px;
 		border-bottom: 1px solid #e1e3e1;
+		position: relative;
 	}
 	.allday-row .gutter {
 		display: flex;
 		justify-content: flex-end;
 		padding: 4px 6px 0 0;
+		grid-column: 1;
+		grid-row: 1 / -1;
 	}
 	.allday-row .gutter span {
 		font-size: 10px;
 		color: var(--color-foreground);
 	}
-	.ad-col {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		padding: 3px 2px;
+	.ad-cell {
+		grid-row: 1 / -1;
 		border-left: 1px solid #e1e3e1;
 	}
 	.ad-ev {
+		z-index: 1;
+		align-self: center;
+		margin: 1px 2px;
+		min-width: 0;
 		border: 0;
 		border-radius: 4px;
 		padding: 2px 5px;
@@ -465,6 +536,16 @@
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.ad-ev.continues-before {
+		margin-left: 0;
+		border-top-left-radius: 0;
+		border-bottom-left-radius: 0;
+	}
+	.ad-ev.continues-after {
+		margin-right: 0;
+		border-top-right-radius: 0;
+		border-bottom-right-radius: 0;
 	}
 	.ad-ev.completed,
 	.ev.completed {

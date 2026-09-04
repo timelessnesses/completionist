@@ -1,19 +1,18 @@
 import { getDb } from '$lib/server/db/index.js';
 import { task, task_tag } from '$lib/server/db/schema.js';
-import { lt, gte, and, isNull } from 'drizzle-orm';
+import { isNull } from 'drizzle-orm';
 import { dev } from '$app/environment';
 
 export const load = async ({ platform, url, locals }) => {
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 	const tasks = await db.query.task.findMany({
-		where: and(
-			isNull(task.deleted_at),
-			gte(task.start_at, getMonthFromDate(new Date(), -1)),
-			lt(task.start_at, getMonthFromDate(new Date(), 2))
-		),
+		where: isNull(task.deleted_at),
 		with: {
+			parentTask: true,
+			subtasks: true,
 			assignees: { with: { user: true } },
 			dependencies: { with: { dependency: true } },
+			dependents: { with: { task: true } },
 			tags: { with: { tag: true } }
 		}
 	});
@@ -29,7 +28,3 @@ export const load = async ({ platform, url, locals }) => {
 		debugEnvironment
 	};
 };
-
-function getMonthFromDate(date: Date, forward: number): Date {
-	return new Date(date.getFullYear(), date.getMonth() + forward, 1);
-}

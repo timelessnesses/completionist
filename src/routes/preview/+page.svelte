@@ -17,9 +17,16 @@
 		toDateKey as toKey,
 		prettyDate
 	} from '$lib/features/calendar/date';
+	import { layoutMonthWeeks } from '$lib/features/calendar/month-layout';
+	import {
+		compareEventStarts,
+		compareMostRecentlyStarted,
+		formatTimeUntil,
+		shouldShowPrestartCountdown
+	} from '$lib/features/calendar/preview-timing';
 	import type { PageProps } from './$types';
 	import type { RichTask } from '$lib/features/tasks/types';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { fly, scale } from 'svelte/transition';
 	import { subscribeWS } from '$lib/websocket.svelte';
@@ -41,9 +48,11 @@
 	let activeCountdownReady = $state(false);
 	let lastActiveEventId: string | null = null;
 	let debugEvent = $state<RichTask | null>(null);
+	let debugStartsAtMs = $state(0);
 	let debugIntroEndMs = $state(0);
 	let debugEndMs = $state(0);
 	let debugBroadcasting = $state(false);
+	let monthGridEl: HTMLElement;
 	const debugFallbackEvent: RichTask = {
 		id: 'preview-debug-event',
 		parent: null,
@@ -66,54 +75,67 @@
 	});
 
 	const cells = $derived(buildMonthGrid(viewDate.getFullYear(), viewDate.getMonth()));
-	const eventsByDay = $derived.by(() => {
-		const map = new Map<string, RichTask[]>();
-		for (const ev of events) {
-			const start = new Date(ev.start_at);
-			const end = new Date(ev.end_at);
-			const day = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-			const last = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-			let guard = 0;
-			while (day <= last && guard++ < 400) {
-				const key = toKey(day);
-				const bucket = map.get(key) ?? [];
-				bucket.push(ev);
-				map.set(key, bucket);
-				day.setDate(day.getDate() + 1);
-			}
-		}
-		return map;
-	});
+	const monthWeeks = $derived(layoutMonthWeeks(cells, events));
 	const prioritizedEvents = $derived(
 		[...events]
 			.filter((event) => !event.completed && event.status !== 'cancelled')
 			.sort((a, b) => compareTaskPriority(a, b, data.viewerId))
 	);
-	const activeEvent = $derived.by(() =>
-		prioritizedEvents.find((ev) => {
-			const start = +new Date(ev.start_at);
-			const end = +new Date(ev.end_at);
-			return start <= nowMs && nowMs < end;
-		})
+	const activeEvent = $derived.by(
+		() =>
+			prioritizedEvents
+				.filter((ev) => {
+					const start = +new Date(ev.start_at);
+					const end = +new Date(ev.end_at);
+					return start <= nowMs && nowMs < end;
+				})
+				.sort(compareMostRecentlyStarted)[0]
 	);
 	const upcomingEvents = $derived(
-		prioritizedEvents.filter(
-			(event) => +new Date(event.start_at) > nowMs && +new Date(event.end_at) > nowMs
-		)
+		prioritizedEvents
+			.filter((event) => +new Date(event.start_at) > nowMs && +new Date(event.end_at) > nowMs)
+			.sort(compareEventStarts)
 	);
 	const nextEvent = $derived(upcomingEvents[0]);
+	const nextEventDependencies = $derived.by(() => {
+		if (!nextEvent) return [];
+		const eventMap = new Map(events.map((event) => [event.id, event]));
+		const dependencies = (nextEvent.dependencies ?? []).flatMap((link) => {
+			const dependency = eventMap.get(link.dependency_id) ?? link.dependency;
+			return dependency ? [dependency as RichTask] : [];
+		});
+		return [...new Map(dependencies.map((event) => [event.id, event])).values()].sort(
+			(a, b) => +new Date(a.start_at) - +new Date(b.start_at)
+		);
+	});
 	const followingEvents = $derived(upcomingEvents.slice(1, 4));
 	const msUntilNext = $derived(nextEvent ? +new Date(nextEvent.start_at) - nowMs : Infinity);
 	const timerMsUntilNext = $derived(
 		nextEvent ? +new Date(nextEvent.start_at) - timerNowMs : Infinity
 	);
-	const isCountdownState = $derived(!activeEvent && msUntilNext > 0 && msUntilNext <= 60_000);
+	const isCountdownState = $derived(shouldShowPrestartCountdown(nextEvent, nowMs));
 	const workerClockTime = $derived(formatWorkerTime(nowMs));
 	const workerClockDate = $derived(formatWorkerDate(nowMs));
 	const debugTarget = $derived(nextEvent ?? prioritizedEvents[0] ?? debugFallbackEvent);
-	const debugIntroActive = $derived(
-		!!debugEvent && debugEndMs - debugIntroEndMs >= 30_000 && timerNowMs < debugIntroEndMs
+	const debugPrestartActive = $derived(
+		!!debugEvent && debugStartsAtMs > 0 && timerNowMs < debugStartsAtMs
 	);
+	const debugIntroActive = $derived(
+		!!debugEvent && !debugPrestartActive && timerNowMs < debugIntroEndMs
+	);
+
+	$effect(() => {
+		void viewDate;
+		void tick().then(() => {
+			const todayCell = monthGridEl?.querySelector<HTMLElement>('[data-today="true"]');
+			if (!monthGridEl || !todayCell) return;
+			const gridRect = monthGridEl.getBoundingClientRect();
+			const cellRect = todayCell.getBoundingClientRect();
+			const cellTop = cellRect.top - gridRect.top + monthGridEl.scrollTop;
+			const centeredTop = cellTop - (monthGridEl.clientHeight - cellRect.height) / 2;
+			monthGridEl.scrollTo({ top: Math.max(0, centeredTop), behavior: 'smooth' });
+		});
+	});
 
 	$effect(() => {
 		const eventId = activeEvent?.id ?? null;
@@ -216,6 +238,8 @@
 				body: JSON.stringify({ id: debugTarget.id, taskName: debugTarget.task_name })
 			});
 			if (!response.ok) throw new Error(await response.text());
+			const result = (await response.json()) as { payload?: Parameters<typeof receiveDebugEvent>[0] };
+			if (result.payload) receiveDebugEvent(result.payload);
 		} catch (error) {
 			console.error('Could not broadcast preview debug event', error);
 		} finally {
@@ -225,22 +249,32 @@
 
 	function receiveDebugEvent(message: {
 		event?: { id?: string; taskName?: string };
+		startsAt?: number;
 		introEndsAt?: number;
 		endsAt?: number;
 	}) {
-		if (!message.introEndsAt || !message.endsAt || message.endsAt <= message.introEndsAt) return;
+		if (
+			!message.startsAt ||
+			!message.introEndsAt ||
+			!message.endsAt ||
+			message.introEndsAt <= message.startsAt ||
+			message.endsAt <= message.introEndsAt
+		)
+			return;
 		const existing = events.find((event) => event.id === message.event?.id);
 		debugEvent = existing ?? {
 			...debugFallbackEvent,
 			id: message.event?.id || debugFallbackEvent.id,
 			task_name: message.event?.taskName || debugFallbackEvent.task_name
 		};
+		debugStartsAtMs = message.startsAt;
 		debugIntroEndMs = message.introEndsAt;
 		debugEndMs = message.endsAt;
 	}
 
 	function closeDebugTrigger() {
 		debugEvent = null;
+		debugStartsAtMs = 0;
 		debugIntroEndMs = 0;
 		debugEndMs = 0;
 	}
@@ -306,15 +340,6 @@
 		return `${prettyDate(toKey(start))} · ${pad2(start.getHours())}:${pad2(start.getMinutes())}–${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
 	}
 
-	function startsIn(timestamp: number): string {
-		const remaining = Math.max(timestamp - nowMs, 0);
-		const days = Math.floor(remaining / 86_400_000);
-		const hours = Math.floor((remaining % 86_400_000) / 3_600_000);
-		const minutes = Math.floor((remaining % 3_600_000) / 60_000);
-		if (days) return `${days}d ${hours}h`;
-		if (hours) return `${hours}h ${minutes}m`;
-		return `${Math.max(minutes, 1)}m`;
-	}
 </script>
 
 {#snippet upcomingQueue(queue: RichTask[])}
@@ -333,7 +358,7 @@
 						></span>
 						<strong>{queuedEvent.task_name}</strong>
 						<time datetime={new Date(queuedEvent.start_at).toISOString()}
-							>{startsIn(+new Date(queuedEvent.start_at))}</time
+							>{formatTimeUntil(queuedEvent.start_at, nowMs)}</time
 						>
 					</div>
 				{/each}
@@ -466,12 +491,15 @@
 			</div>
 			<div class="feature-countdown">
 				<span>Begins in</span>
-				<strong>{startsIn(+new Date(nextEvent.start_at))}</strong>
+				<strong>{formatTimeUntil(nextEvent.start_at, nowMs)}</strong>
 				<small>Worker-synced</small>
 			</div>
-			{#if followingEvents.length}
-				<div class="feature-queue" aria-label="More upcoming events">
-					{#each followingEvents as event (event.id)}
+			{#if nextEventDependencies.length}
+				<div
+					class="feature-queue"
+					aria-label={`All ${nextEventDependencies.length} dependencies for ${nextEvent.task_name}`}
+				>
+					{#each nextEventDependencies as event (event.id)}
 						<div>
 							<span class="queue-dot" style:background={hex(event)}></span>
 							<span class="queue-copy"
@@ -489,36 +517,47 @@
 	<div class="cal-layout">
 		<section class="month-pane">
 			<h3 class="pane-title">Month</h3>
-			<div class="grid">
-				{#each WEEKDAYS as d}
-					<div class="dow">{d}</div>
-				{/each}
-				{#each cells as cell, index (cell.key)}
-					{@const dayEvents = eventsByDay.get(cell.key) ?? []}
-					<div
-						class="cell"
-						class:dim={!cell.inMonth}
-						style:animation-delay={`${Math.min(index, 13) * 18}ms`}
-					>
-						<span class="daynum" class:today={isSameDay(cell.date, new Date())}>
-							{cell.date.getDate()}
-						</span>
-						<div class="events">
-							{#each dayEvents.slice(0, 3) as ev (ev.id)}
+			<div class="grid" bind:this={monthGridEl}>
+				<div class="weekday-row">
+					{#each WEEKDAYS as d}
+						<div class="dow">{d}</div>
+					{/each}
+				</div>
+				<div class="month-weeks">
+					{#each monthWeeks as week, weekIndex (week.key)}
+						<div
+							class="month-week"
+							style:grid-template-rows={`30px repeat(${week.laneCount}, 23px) minmax(4px, 1fr)`}
+						>
+							{#each week.cells as cell, dayIndex (cell.key)}
 								<div
-									class="event"
-									style:background={`rgba(${ev.color.r}, ${ev.color.g}, ${ev.color.b}, 0.18)`}
-									title={ev.task_name}
+									class="cell"
+									class:dim={!cell.inMonth}
+									data-today={isSameDay(cell.date, new Date())}
+									style:grid-column={dayIndex + 1}
+									style:animation-delay={`${Math.min(weekIndex * 7 + dayIndex, 13) * 18}ms`}
 								>
-									{ev.task_name}
+									<span class="daynum" class:today={isSameDay(cell.date, new Date())}>
+										{cell.date.getDate()}
+									</span>
 								</div>
 							{/each}
-							{#if dayEvents.length > 3}
-								<span class="more">+{dayEvents.length - 3} more</span>
-							{/if}
+							{#each week.bars as bar (bar.event.id)}
+								<div
+									class="event"
+									class:continues-before={bar.continuesBefore}
+									class:continues-after={bar.continuesAfter}
+									style:grid-column={`${bar.startColumn} / span ${bar.span}`}
+									style:grid-row={bar.lane + 2}
+									style:background={`rgba(${bar.event.color.r}, ${bar.event.color.g}, ${bar.event.color.b}, 0.18)`}
+									title={bar.event.task_name}
+								>
+									{bar.event.task_name}
+								</div>
+							{/each}
 						</div>
-					</div>
-				{/each}
+					{/each}
+				</div>
 			</div>
 		</section>
 
@@ -530,7 +569,11 @@
 
 	{#if isCountdownState && nextEvent}
 		<div class="countdown-overlay" aria-live="polite" transition:fly={{ y: 12, duration: 260 }}>
-			<div class="countdown-card" transition:scale={{ start: 0.96, duration: 260 }}>
+			<div
+				class="countdown-card"
+				style:--countdown-accent={hex(nextEvent)}
+				transition:scale={{ start: 0.96, duration: 260 }}
+			>
 				<div class="eyebrow">Starting Soon</div>
 				<h3>{nextEvent.task_name}</h3>
 				<div class="timer">{countdownWithMs(timerMsUntilNext)}</div>
@@ -540,7 +583,7 @@
 		</div>
 	{/if}
 
-	{#if activeEvent}
+	{#if activeEvent && !isCountdownState}
 		<div class="active-overlay" aria-live="polite" transition:fly={{ y: 18, duration: 320 }}>
 			{@render eventClockCard(
 				activeEvent,
@@ -553,7 +596,26 @@
 		</div>
 	{/if}
 
-	{#if debugEvent}
+	{#if debugEvent && debugPrestartActive}
+		<div class="countdown-overlay" aria-live="polite" transition:fly={{ y: 12, duration: 260 }}>
+			<div
+				class="countdown-card"
+				style:--countdown-accent={hex(debugEvent)}
+				transition:scale={{ start: 0.96, duration: 260 }}
+			>
+				<button
+					class="debug-close"
+					type="button"
+					aria-label="Close debug simulation"
+					onclick={closeDebugTrigger}>×</button
+				>
+				<div class="eyebrow">Test · Starting Soon</div>
+				<h3>{debugEvent.task_name}</h3>
+				<div class="timer">{countdownWithMs(debugStartsAtMs - timerNowMs)}</div>
+				<p>Simulated task starts in ten seconds.</p>
+			</div>
+		</div>
+	{:else if debugEvent}
 		<div
 			class="active-overlay debug-overlay"
 			aria-live="polite"
@@ -921,13 +983,34 @@
 	}
 	.grid {
 		flex: 1;
+		position: relative;
 		overflow-y: auto;
-		display: grid;
-		grid-template-columns: repeat(7, 1fr);
-		grid-template-rows: 26px repeat(6, minmax(96px, 1fr));
+		display: flex;
+		flex-direction: column;
 		border-top: 1px solid #e1e3e1;
 		background: #fff;
 		border-radius: 12px;
+	}
+	.weekday-row,
+	.month-week {
+		display: grid;
+		grid-template-columns: repeat(7, minmax(0, 1fr));
+	}
+	.weekday-row {
+		position: sticky;
+		top: 0;
+		z-index: 3;
+		flex: 0 0 26px;
+		background: #fff;
+	}
+	.month-weeks {
+		flex: 1;
+		display: grid;
+		grid-template-rows: repeat(6, minmax(96px, auto));
+	}
+	.month-week {
+		position: relative;
+		min-height: 96px;
 	}
 	.dow {
 		font-size: 11px;
@@ -941,13 +1024,18 @@
 		border-left: 0;
 	}
 	.cell {
+		position: relative;
+		z-index: 0;
+		grid-row: 1 / -1;
+		min-width: 0;
+		min-height: 96px;
 		border-left: 1px solid #e1e3e1;
 		border-top: 1px solid #e1e3e1;
 		padding: 4px 6px;
-		overflow: hidden;
+		overflow: visible;
 		animation: cell-enter 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 	}
-	.cell:nth-child(7n + 8) {
+	.month-week .cell:first-child {
 		border-left: 0;
 	}
 	.cell.dim .daynum {
@@ -972,13 +1060,11 @@
 		color: #fff;
 		font-weight: 600;
 	}
-	.events {
-		display: flex;
-		flex-direction: column;
-		gap: 3px;
-		margin-top: 4px;
-	}
 	.event {
+		z-index: 1;
+		align-self: center;
+		min-width: 0;
+		margin: 1px 6px;
 		font-size: 11px;
 		font-weight: 500;
 		border-radius: 4px;
@@ -987,12 +1073,16 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	.more {
-		font-size: 10.5px;
-		color: #5f6368;
-		padding-left: 6px;
+	.event.continues-before {
+		margin-left: 0;
+		border-top-left-radius: 0;
+		border-bottom-left-radius: 0;
 	}
-
+	.event.continues-after {
+		margin-right: 0;
+		border-top-right-radius: 0;
+		border-bottom-right-radius: 0;
+	}
 	.countdown-overlay,
 	.active-overlay {
 		position: fixed;
@@ -1003,21 +1093,32 @@
 		z-index: 1000;
 	}
 	.countdown-overlay {
-		background: rgb(18 22 28 / 68%);
-		backdrop-filter: blur(3px);
+		background: rgb(240 244 249 / 86%);
+		backdrop-filter: blur(5px);
 	}
 	.countdown-card {
+		--countdown-accent: #0b57d0;
+		position: relative;
 		pointer-events: auto;
-		background: rgb(20 24 29 / 94%);
-		color: #fff;
-		border: 1px solid rgb(255 255 255 / 14%);
-		border-radius: 20px;
+		background:
+			linear-gradient(112deg, color-mix(in srgb, var(--countdown-accent) 9%, #fff), #fff 58%),
+			#fff;
+		color: #1f1f1f;
+		border: 1px solid #dfe3e8;
+		border-radius: 18px;
 		padding: 24px 26px 20px;
 		text-align: center;
 		width: min(460px, calc(100vw - 40px));
 		max-height: calc(100vh - 40px);
 		overflow-y: auto;
-		box-shadow: 0 24px 72px rgb(0 0 0 / 38%);
+		box-shadow: 0 18px 60px rgb(60 64 67 / 22%);
+	}
+	.countdown-card::before {
+		position: absolute;
+		inset: 0 auto 0 0;
+		width: 5px;
+		background: var(--countdown-accent);
+		content: '';
 	}
 	.countdown-card h3 {
 		margin: 6px 0 10px;
@@ -1025,6 +1126,7 @@
 		font-weight: 600;
 	}
 	.countdown-card .timer {
+		color: var(--countdown-accent);
 		font-size: 44px;
 		font-weight: 700;
 		letter-spacing: 1px;
@@ -1032,12 +1134,12 @@
 	}
 	.countdown-card p {
 		margin: 10px 0 0;
-		opacity: 0.9;
+		color: #5f6368;
 	}
 	.countdown-upcoming {
 		margin-top: 20px;
 		padding-top: 15px;
-		border-top: 1px solid rgb(255 255 255 / 14%);
+		border-top: 1px solid #e1e3e1;
 		text-align: left;
 	}
 	.countdown-upcoming-heading {
@@ -1045,14 +1147,14 @@
 		align-items: center;
 		justify-content: space-between;
 		margin-bottom: 9px;
-		color: #c4c7c5;
+		color: #5f6368;
 		font-size: 9px;
 		font-weight: 700;
 		letter-spacing: 0.09em;
 		text-transform: uppercase;
 	}
 	.countdown-upcoming-heading small {
-		color: #8ab4f8;
+		color: #0b57d0;
 		font-size: 8px;
 	}
 	.countdown-upcoming-list {
@@ -1067,13 +1169,13 @@
 		min-height: 31px;
 		padding: 3px 8px;
 		border-radius: 9px;
-		background: rgb(255 255 255 / 5%);
+		background: #f0f4f9;
 	}
 	.countdown-upcoming-color {
 		width: 7px;
 		height: 7px;
 		border-radius: 50%;
-		box-shadow: 0 0 0 3px rgb(255 255 255 / 5%);
+		box-shadow: 0 0 0 3px rgb(11 87 208 / 7%);
 	}
 	.countdown-upcoming-item strong {
 		overflow: hidden;
@@ -1083,19 +1185,20 @@
 		white-space: nowrap;
 	}
 	.countdown-upcoming-item time {
-		color: #bdc1c6;
+		color: #5f6368;
 		font-size: 9px;
 		font-variant-numeric: tabular-nums;
 	}
 	.countdown-upcoming-empty {
 		padding: 9px 10px;
-		border: 1px dashed rgb(255 255 255 / 16%);
+		border: 1px dashed #d8dde6;
 		border-radius: 9px;
-		color: #9aa0a6;
+		color: #80868b;
 		font-size: 10px;
 		text-align: center;
 	}
 	.eyebrow {
+		color: #5f6368;
 		text-transform: uppercase;
 		font-size: 11px;
 		letter-spacing: 1px;
@@ -1128,6 +1231,16 @@
 		line-height: 1;
 		cursor: pointer;
 		pointer-events: auto;
+	}
+	.countdown-card .debug-close {
+		top: 10px;
+		right: 10px;
+		width: 32px;
+		height: 32px;
+		border-color: #d8dde6;
+		background: #f0f4f9;
+		color: #444746;
+		font-size: 20px;
 	}
 	.debug-mode {
 		justify-self: center;
