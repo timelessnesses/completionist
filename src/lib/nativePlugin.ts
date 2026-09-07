@@ -1,6 +1,16 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 
 type Icons = 'IconLight' | 'IconDark';
+export type AppTheme = 'system' | 'light' | 'dark';
+
+const AppAppearance = registerPlugin<{
+	setTheme(options: { theme: AppTheme }): Promise<void>;
+}>('AppAppearance');
+
+export async function syncNativeTheme(theme: AppTheme) {
+	if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('AppAppearance')) return;
+	await AppAppearance.setTheme({ theme });
+}
 
 const ChangeIconPlugin = registerPlugin<{
 	setIcon(options: { name: Icons }): Promise<{ name: Icons }>;

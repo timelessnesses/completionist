@@ -33,7 +33,7 @@
 		unregisterServiceWorker
 	} from '$lib/notificationStuff';
 	import { notificationPath } from '$lib/notification-links';
-	import { setIcon } from '$lib/nativePlugin';
+	import { setIcon, syncNativeTheme, type AppTheme } from '$lib/nativePlugin';
 	import { openNativeAlarmSettings, openNativeUnusedAppSettings } from '$lib/task-alarms';
 
 	let {
@@ -92,7 +92,7 @@
 	const activeMessages = $derived(selectedPerson ? (chatMessages[selectedPerson.id] ?? []) : []);
 
 	// ---- Theme ----
-	type Theme = 'system' | 'light' | 'dark';
+	type Theme = AppTheme;
 	let theme: Theme = $state('system');
 
 	function isDarkTheme(t: Theme) {
@@ -101,6 +101,9 @@
 	}
 
 	function applyTheme(t: Theme) {
+		void syncNativeTheme(t).catch((error) => {
+			console.error('Failed to save the native app theme:', error);
+		});
 		const root = document.documentElement;
 		const dark = isDarkTheme(t);
 		root.classList.toggle('dark', dark);
@@ -134,7 +137,8 @@
 	onMount(() => {
 		let saved: Theme = 'system';
 		try {
-			saved = (localStorage.getItem('theme') as Theme) || 'system';
+			const preference = localStorage.getItem('theme');
+			saved = preference === 'light' || preference === 'dark' ? preference : 'system';
 		} catch {
 			/* ignore */
 		}

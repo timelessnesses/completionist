@@ -5,6 +5,7 @@ type NativeAlarm = {
 	task_id: string;
 	rule_key: string;
 	task_name: string;
+	color: { r: number; g: number; b: number };
 	description: string | null;
 	occurrence_at: number;
 	end_at: number;

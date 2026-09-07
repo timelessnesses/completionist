@@ -11,7 +11,11 @@ import {
 	turnThisToUint8Array
 } from './stuff';
 import { getDb } from '$lib/server/db/index.js';
-import { JWT_EXPIRATION_IN_SECONDS, REFRESH_TOKEN_EXPIRATION_IN_SECONDS } from '$lib/constants';
+import {
+	JWT_EXPIRATION_IN_SECONDS,
+	REFRESH_TOKEN_EXPIRATION,
+	REFRESH_TOKEN_EXPIRATION_IN_SECONDS
+} from '$lib/constants';
 import {
 	emailBelongsToDomain,
 	normalizeEmail,
@@ -139,7 +143,7 @@ export async function POST({ request, cookies, platform }) {
 		// httpOnly: true,
 		sameSite: 'strict',
 		secure: request.url.startsWith('https://'),
-		maxAge: 3600
+		maxAge: REFRESH_TOKEN_EXPIRATION
 	});
 	// TODO: re-add audit logging once a `logs` table exists in the schema.
 	return new Response(JSON.stringify({ success: true }), { status: 200 });

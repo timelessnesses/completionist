@@ -16,6 +16,7 @@ export type NativeTaskAlarm = {
 	task_id: string;
 	rule_key: string;
 	task_name: string;
+	color: { r: number; g: number; b: number };
 	description: string | null;
 	occurrence_at: number;
 	end_at: number;
@@ -40,6 +41,7 @@ export async function taskAlarmsForUser(
 		if (item.owner !== userId && !item.assignees.some((link) => link.user_id === userId)) continue;
 		const priority = taskPriority(item, userId);
 		const priorityFields = {
+			color: item.color,
 			importance_value: priority.importance,
 			assigned_to_user: priority.assignedToUser,
 			dependency_count: priority.dependencyCount
@@ -106,6 +108,7 @@ export async function validateTaskAlarm(
 	if (item.owner !== userId && !item.assignees.some((link) => link.user_id === userId)) return null;
 	const priority = taskPriority(item, userId);
 	const priorityFields = {
+		color: item.color,
 		importance_value: priority.importance,
 		assigned_to_user: priority.assignedToUser,
 		dependency_count: priority.dependencyCount
