@@ -2,6 +2,7 @@ import { getDb } from '$lib/server/db/index.js';
 import { task, user } from '$lib/server/db/schema.js';
 import { isNull } from 'drizzle-orm';
 export const load = async ({ params, request, platform, locals }) => {
+	const d1Time = performance.now();
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 
 	const tasks = await db.query.task.findMany({
@@ -42,6 +43,7 @@ export const load = async ({ params, request, platform, locals }) => {
 			}
 		}
 	});
+	console.log('Tasks loaded in', performance.now() - d1Time, 'ms');
 	const visibleTasks = tasks.map((item) => ({
 		...item,
 		subtasks: item.subtasks.filter((subtask) => !subtask.deleted_at),
@@ -50,7 +52,9 @@ export const load = async ({ params, request, platform, locals }) => {
 	}));
 
 	const filters = await db.query.task_tag.findMany();
+	console.log('Filters loaded in', performance.now() - d1Time, 'ms');
 	const users = await db.query.user.findMany({ where: isNull(user.deleted_at) });
+	console.log('Users loaded in', performance.now() - d1Time, 'ms');
 
 	/* // Detect ownership: the user is an owner if they own any task or are an admin.
     let isOwner = locals.user?.admin ?? false;
