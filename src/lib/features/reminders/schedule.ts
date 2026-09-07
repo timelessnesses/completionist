@@ -7,6 +7,15 @@ export type ReminderRule = {
 	repeat_unit: ReminderUnit | null;
 };
 
+export const EVENT_DEADLINE_RULE_KEY = 'task-deadline';
+export const EVENT_DEADLINE_REMINDER = {
+	id: EVENT_DEADLINE_RULE_KEY,
+	lead_value: 0,
+	lead_unit: 'hour',
+	repeat_value: null,
+	repeat_unit: null
+} as const satisfies ReminderRule & { id: string };
+
 const FIXED_UNIT_MS: Record<Exclude<ReminderUnit, 'month'>, number> = {
 	hour: 60 * 60_000,
 	day: 24 * 60 * 60_000,
@@ -75,6 +84,7 @@ export function nextReminderOccurrence(
 }
 
 export function reminderRuleKey(rule: ReminderRule): string {
+	if (rule.lead_value === 0 && !rule.repeat_value) return EVENT_DEADLINE_RULE_KEY;
 	return [rule.lead_value, rule.lead_unit, rule.repeat_value ?? '', rule.repeat_unit ?? ''].join(
 		':'
 	);

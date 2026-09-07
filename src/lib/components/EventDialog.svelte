@@ -81,8 +81,8 @@
 	let description = $state('');
 	let date = $state(todayStr());
 	let endDate = $state(todayStr());
-	let startTime = $state('09:00');
-	let endTime = $state('10:00');
+	let startTime = $state('');
+	let endTime = $state('');
 	let allDay = $state(false);
 	let color = $state('#0b57d0');
 	let completed = $state(false);
@@ -195,18 +195,19 @@
 	}
 
 	function resetCreateForm() {
-		const today = todayStr();
+		const start = new Date();
+		const end = new Date(start.getTime() + 60 * 60_000);
 		title = '';
 		description = '';
-		date = today;
-		endDate = today;
-		startTime = '09:00';
-		endTime = '10:00';
+		date = toDateInput(start);
+		endDate = toDateInput(end);
+		startTime = toTimeInput(start);
+		endTime = toTimeInput(end);
 		allDay = false;
 		color = '#0b57d0';
 		completed = false;
 		importanceValue = 0;
-		reminders = [];
+		reminders = [createReminderDraft()];
 		selectedTags = [];
 		selectedAssigneeIds = [];
 		selectedDependencyIds = [];
@@ -631,6 +632,13 @@
 							<MdiIcon path={mdiPlus} size={15} /> Add
 						</button>
 					</div>
+					<div class="read-reminder">
+						<MdiIcon path={mdiBellOutline} size={16} />
+						<span
+							>Event deadline reminder: automatically at the end time, unless completed or
+							cancelled.</span
+						>
+					</div>
 					{#if reminders.length}
 						<div class="reminder-list">
 							{#each reminders as reminder, index (reminder.key)}
@@ -909,16 +917,21 @@
 				{#if event.description}<p class="desc">{event.description}</p>{:else}<p class="desc mute">
 						No description
 					</p>{/if}
-				{#if event.reminders?.length}
-					<div class="read-reminders">
-						{#each event.reminders as reminder (reminder.id)}
-							<div class="read-reminder">
-								<MdiIcon path={mdiBellOutline} size={16} />
-								<span>{reminderRuleSummary(reminder)}</span>
-							</div>
-						{/each}
+				<div class="read-reminders">
+					<div class="read-reminder">
+						<MdiIcon path={mdiBellOutline} size={16} />
+						<span
+							>Event deadline reminder: automatically at the end time, unless completed or
+							cancelled.</span
+						>
 					</div>
-				{/if}
+					{#each event.reminders ?? [] as reminder (reminder.id)}
+						<div class="read-reminder">
+							<MdiIcon path={mdiBellOutline} size={16} />
+							<span>{reminderRuleSummary(reminder)}</span>
+						</div>
+					{/each}
+				</div>
 				{#if (event.tags ?? []).length}
 					<div class="selected-tags">
 						{#each event.tags ?? [] as link (link.tag_id)}

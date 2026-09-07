@@ -4,7 +4,12 @@ import { and, eq, gte, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import * as web_push from 'web-push';
 import { Resend } from 'resend';
 import type { TaskNotificationEnvelope } from '$lib/server/task-fanout';
-import { reminderOccurrenceInWindow, reminderRuleKey } from '$lib/features/reminders/schedule';
+import {
+	EVENT_DEADLINE_REMINDER,
+	EVENT_DEADLINE_RULE_KEY,
+	reminderOccurrenceInWindow,
+	reminderRuleKey
+} from '$lib/features/reminders/schedule';
 export { GlobalWS } from '$lib/durable_objects/GlobalWS';
 
 const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
@@ -86,12 +91,13 @@ async function sendConfiguredReminders(scheduledTime: number, env: Env) {
 	});
 
 	for (const item of candidates) {
-		for (const reminder of item.reminders) {
+		for (const reminder of [...item.reminders, EVENT_DEADLINE_REMINDER]) {
 			const occurrence = reminderOccurrenceInWindow(item.end_at, reminder, from, until);
 			if (!occurrence) continue;
 			// Use the rule itself instead of its row ID so replacing reminder rows while
 			// editing an event cannot resend an otherwise unchanged occurrence.
 			const ruleKey = reminderRuleKey(reminder);
+			if (ruleKey !== EVENT_DEADLINE_RULE_KEY && +occurrence === +item.end_at) continue;
 			const key = `reminder:configured:${item.id}:${ruleKey}:${occurrence.getTime()}`;
 			if (await env.COMPLETIONIST_KV.get(key)) continue;
 			const remaining = formatRemainingTime(+item.end_at - occurrence.getTime());
