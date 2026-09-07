@@ -33,7 +33,7 @@
 				return;
 			}
 			if (data.type === 'pong') {
-				latency = data.calledArrived - data.calledWhen;
+				latency = Date.now() - data.calledWhen;
 			}
 		};
 

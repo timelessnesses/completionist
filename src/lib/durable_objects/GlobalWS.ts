@@ -203,7 +203,7 @@ export class GlobalWS extends DurableObject {
 
 		if (data.type === 'ping') {
 			ws.send(
-				JSON.stringify({ type: 'pong', calledArrived: Date.now(), calledWhen: data.calledWhen })
+				JSON.stringify({ type: 'pong', calledArrived: Date.now(), calledWhen: data.calledWhen, durableObjectLocation: this.ctx.props })
 			);
 			return;
 		}
