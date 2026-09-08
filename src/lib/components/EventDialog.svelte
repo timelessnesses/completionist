@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { backDismiss } from '$lib/back-dismiss';
 	import {
 		mdiAccountMultipleOutline,
 		mdiBellOutline,
@@ -27,6 +28,7 @@
 
 	type ReminderDraft = {
 		key: string;
+		anchor: 'start' | 'end';
 		leadValue: number;
 		leadUnit: ReminderUnit;
 		repeatEnabled: boolean;
@@ -230,6 +232,7 @@
 		reminders = (value.reminders ?? []).map((reminder) =>
 			createReminderDraft({
 				key: reminder.id,
+				anchor: reminder.anchor ?? 'end',
 				leadValue: reminder.lead_value,
 				leadUnit: reminder.lead_unit,
 				repeatEnabled: !!(reminder.repeat_value && reminder.repeat_unit),
@@ -258,6 +261,7 @@
 	function createReminderDraft(initial: Partial<ReminderDraft> = {}): ReminderDraft {
 		return {
 			key: initial.key ?? `reminder-${++reminderDraftSequence}`,
+			anchor: initial.anchor ?? 'start',
 			leadValue: initial.leadValue ?? 1,
 			leadUnit: initial.leadUnit ?? 'day',
 			repeatEnabled: initial.repeatEnabled ?? false,
@@ -266,9 +270,9 @@
 		};
 	}
 
-	function addReminder() {
+	function addReminder(anchor: 'start' | 'end') {
 		if (reminders.length >= 20) return;
-		reminders = [...reminders, createReminderDraft()];
+		reminders = [...reminders, createReminderDraft({ anchor })];
 	}
 
 	function removeReminder(key: string) {
@@ -404,6 +408,7 @@
 				assignee_ids: selectedAssigneeIds,
 				dependency_ids: selectedDependencyIds,
 				reminders: reminders.map((reminder) => ({
+					anchor: reminder.anchor,
 					lead_value: reminder.leadValue,
 					lead_unit: reminder.leadUnit,
 					repeat_value: reminder.repeatEnabled ? reminder.repeatValue : null,
@@ -531,6 +536,7 @@
 
 	<div
 		class="task-dialog task-dialog--event"
+		use:backDismiss={close}
 		role="dialog"
 		aria-modal="true"
 		aria-label={dialogTitle}
@@ -616,102 +622,123 @@
 					{/if}
 				</div>
 
-				<section class="reminder-card" class:enabled={reminders.length > 0}>
-					<div class="reminder-heading">
-						<span class="reminder-icon"><MdiIcon path={mdiBellOutline} size={18} /></span>
-						<div>
-							<strong>Event reminders</strong>
-							<span>Notify the owner and assignees through their enabled channels.</span>
+				{#each ['start', 'end'] as anchor}
+					{@const group = reminders.filter((reminder) => reminder.anchor === anchor)}
+					<section class="reminder-card" class:enabled={group.length > 0}>
+						<div class="reminder-heading">
+							<span class="reminder-icon"><MdiIcon path={mdiBellOutline} size={18} /></span>
+							<div>
+								<strong
+									>{anchor === 'start' ? 'Event reminders' : 'Event deadline reminders'}</strong
+								>
+								<span
+									>{anchor === 'start' ? 'Before the event starts.' : 'Before the event ends.'} Notify
+									the owner and assignees.</span
+								>
+							</div>
+							<button
+								type="button"
+								class="add-reminder"
+								onclick={() => addReminder(anchor as 'start' | 'end')}
+								aria-label={anchor === 'start' ? 'Add event reminder' : 'Add deadline reminder'}
+								disabled={reminders.length >= 20}
+							>
+								<MdiIcon path={mdiPlus} size={15} /> Add
+							</button>
 						</div>
-						<button
-							type="button"
-							class="add-reminder"
-							onclick={addReminder}
-							disabled={reminders.length >= 20}
-						>
-							<MdiIcon path={mdiPlus} size={15} /> Add
-						</button>
-					</div>
-					<div class="read-reminder">
-						<MdiIcon path={mdiBellOutline} size={16} />
-						<span
-							>Event deadline reminder: automatically at the end time, unless completed or
-							cancelled.</span
-						>
-					</div>
-					{#if reminders.length}
-						<div class="reminder-list">
-							{#each reminders as reminder, index (reminder.key)}
-								<article class="reminder-rule">
-									<div class="reminder-rule-head">
-										<span>Reminder {index + 1}</span>
-										<button
-											type="button"
-											class="remove-reminder"
-											aria-label={`Remove reminder ${index + 1}`}
-											onclick={() => removeReminder(reminder.key)}
-										>
-											<MdiIcon path={mdiDeleteOutline} size={15} />
-										</button>
-									</div>
-									<div class="reminder-controls">
-										<span class="reminder-sentence">Notify me</span>
-										<input
-											class="number-input"
-											type="number"
-											min="1"
-											max="1000"
-											step="1"
-											bind:value={reminder.leadValue}
-											aria-label={`Reminder ${index + 1} lead value`}
-										/>
-										<select
-											bind:value={reminder.leadUnit}
-											aria-label={`Reminder ${index + 1} lead unit`}
-										>
-											<option value="hour">hour(s)</option>
-											<option value="day">day(s)</option>
-											<option value="week">week(s)</option>
-											<option value="month">month(s)</option>
-										</select>
-										<span class="reminder-sentence">before it ends</span>
-									</div>
-									<label class="repeat-toggle row">
-										<input type="checkbox" bind:checked={reminder.repeatEnabled} />
-										<span>Repeat until the event ends</span>
-									</label>
-									{#if reminder.repeatEnabled}
-										<div class="reminder-controls repeat-controls">
-											<span class="reminder-sentence">Every</span>
+						{#if anchor === 'end'}
+							<div class="read-reminder">
+								<MdiIcon path={mdiBellOutline} size={16} />
+								<span
+									>Event deadline reminder: automatically at the end time, unless completed or
+									cancelled.</span
+								>
+							</div>
+						{/if}
+						{#if group.length}
+							<div class="reminder-list">
+								{#each group as reminder, index (reminder.key)}
+									<article class="reminder-rule">
+										<div class="reminder-rule-head">
+											<span
+												>{anchor === 'start' ? 'Event reminder' : 'Deadline reminder'}
+												{index + 1}</span
+											>
+											<button
+												type="button"
+												class="remove-reminder"
+												aria-label={`Remove reminder ${index + 1}`}
+												onclick={() => removeReminder(reminder.key)}
+											>
+												<MdiIcon path={mdiDeleteOutline} size={15} />
+											</button>
+										</div>
+										<div class="reminder-controls">
+											<span class="reminder-sentence">Notify me</span>
 											<input
 												class="number-input"
 												type="number"
 												min="1"
 												max="1000"
 												step="1"
-												bind:value={reminder.repeatValue}
-												aria-label={`Reminder ${index + 1} repeat value`}
+												bind:value={reminder.leadValue}
+												aria-label={`Reminder ${index + 1} lead value`}
 											/>
 											<select
-												bind:value={reminder.repeatUnit}
-												aria-label={`Reminder ${index + 1} repeat unit`}
+												bind:value={reminder.leadUnit}
+												aria-label={`Reminder ${index + 1} lead unit`}
 											>
 												<option value="hour">hour(s)</option>
 												<option value="day">day(s)</option>
 												<option value="week">week(s)</option>
 												<option value="month">month(s)</option>
 											</select>
+											<span class="reminder-sentence"
+												>before it {anchor === 'start' ? 'starts' : 'ends'}</span
+											>
 										</div>
-									{/if}
-								</article>
-							{/each}
-						</div>
-					{:else}
-						<button type="button" class="empty-reminders" onclick={addReminder}>
-							<MdiIcon path={mdiPlus} size={16} /> Add your first reminder
-						</button>
-					{/if}
-				</section>
+										<label class="repeat-toggle row">
+											<input type="checkbox" bind:checked={reminder.repeatEnabled} />
+											<span>Repeat until the event {anchor === 'start' ? 'starts' : 'ends'}</span>
+										</label>
+										{#if reminder.repeatEnabled}
+											<div class="reminder-controls repeat-controls">
+												<span class="reminder-sentence">Every</span>
+												<input
+													class="number-input"
+													type="number"
+													min="1"
+													max="1000"
+													step="1"
+													bind:value={reminder.repeatValue}
+													aria-label={`Reminder ${index + 1} repeat value`}
+												/>
+												<select
+													bind:value={reminder.repeatUnit}
+													aria-label={`Reminder ${index + 1} repeat unit`}
+												>
+													<option value="hour">hour(s)</option>
+													<option value="day">day(s)</option>
+													<option value="week">week(s)</option>
+													<option value="month">month(s)</option>
+												</select>
+											</div>
+										{/if}
+									</article>
+								{/each}
+							</div>
+						{:else}
+							<button
+								type="button"
+								class="empty-reminders"
+								disabled={reminders.length >= 20}
+								onclick={() => addReminder(anchor as 'start' | 'end')}
+							>
+								<MdiIcon path={mdiPlus} size={16} /> Add {anchor === 'start' ? 'event' : 'deadline'} reminder
+							</button>
+						{/if}
+					</section>
+				{/each}
 
 				<label class="field">
 					<span class="lbl">Description</span>
@@ -917,21 +944,28 @@
 				{#if event.description}<p class="desc">{event.description}</p>{:else}<p class="desc mute">
 						No description
 					</p>{/if}
-				<div class="read-reminders">
-					<div class="read-reminder">
-						<MdiIcon path={mdiBellOutline} size={16} />
-						<span
-							>Event deadline reminder: automatically at the end time, unless completed or
-							cancelled.</span
-						>
+				{#each ['start', 'end'] as anchor}
+					<div class="read-reminders">
+						<strong>{anchor === 'start' ? 'Event reminders' : 'Event deadline reminders'}</strong>
+						{#if anchor === 'end'}
+							<div class="read-reminder">
+								<MdiIcon path={mdiBellOutline} size={16} />
+								<span
+									>Event deadline reminder: automatically at the end time, unless completed or
+									cancelled.</span
+								>
+							</div>
+						{/if}
+						{#each (event.reminders ?? []).filter((reminder) => (reminder.anchor ?? 'end') === anchor) as reminder (reminder.id)}
+							<div class="read-reminder">
+								<MdiIcon path={mdiBellOutline} size={16} />
+								<span>{reminderRuleSummary(reminder)}</span>
+							</div>
+						{:else}
+							{#if anchor === 'start'}<p class="meta">No advance event reminders.</p>{/if}
+						{/each}
 					</div>
-					{#each event.reminders ?? [] as reminder (reminder.id)}
-						<div class="read-reminder">
-							<MdiIcon path={mdiBellOutline} size={16} />
-							<span>{reminderRuleSummary(reminder)}</span>
-						</div>
-					{/each}
-				</div>
+				{/each}
 				{#if (event.tags ?? []).length}
 					<div class="selected-tags">
 						{#each event.tags ?? [] as link (link.tag_id)}

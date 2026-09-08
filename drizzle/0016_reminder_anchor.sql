@@ -1,0 +1,1 @@
+ALTER TABLE `task_reminder` ADD `anchor` text DEFAULT 'end' NOT NULL;

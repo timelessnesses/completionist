@@ -20,6 +20,7 @@
 		mdiCalendarSyncOutline
 	} from '@mdi/js';
 	import MdiIcon from './MdiIcon.svelte';
+	import { backDismiss } from '$lib/back-dismiss';
 	import type { Person } from '$lib/features/tasks/types';
 	import { subscribeWS } from '$lib/websocket.svelte';
 	import { onMount } from 'svelte';
@@ -583,6 +584,7 @@
 	<button class="scrim" aria-label="Close chat" onclick={closeChat}></button>
 	<div
 		class="chat-dialog"
+		use:backDismiss={closeChat}
 		role="dialog"
 		aria-modal="true"
 		aria-label={`Chat with ${selectedPerson.name}`}
@@ -689,7 +691,13 @@
 
 {#if shareOpen}
 	<button class="scrim" aria-label="Close share" onclick={() => (shareOpen = false)}></button>
-	<div class="share-dialog" role="dialog" aria-modal="true" aria-label="Share">
+	<div
+		class="share-dialog"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Share"
+		use:backDismiss={() => (shareOpen = false)}
+	>
 		<header class="share-head">
 			<h2>Share this calendar</h2>
 			<button class="x" aria-label="Close" onclick={() => (shareOpen = false)}>
@@ -717,6 +725,7 @@
 		class="share-dialog settings-dialog"
 		aria-label="Settings"
 		use:showModal
+		use:backDismiss={() => (settingsOpen = false)}
 		onclick={(event) => {
 			if (event.target === event.currentTarget) settingsOpen = false;
 		}}

@@ -8,6 +8,7 @@ import {
 	EVENT_DEADLINE_REMINDER,
 	EVENT_DEADLINE_RULE_KEY,
 	reminderOccurrenceInWindow,
+	reminderReferenceAt,
 	reminderRuleKey
 } from '$lib/features/reminders/schedule';
 export { GlobalWS } from '$lib/durable_objects/GlobalWS';
@@ -92,28 +93,37 @@ async function sendConfiguredReminders(scheduledTime: number, env: Env) {
 
 	for (const item of candidates) {
 		for (const reminder of [...item.reminders, EVENT_DEADLINE_REMINDER]) {
-			const occurrence = reminderOccurrenceInWindow(item.end_at, reminder, from, until);
+			const referenceAt = reminderReferenceAt(item, reminder);
+			const occurrence = reminderOccurrenceInWindow(referenceAt, reminder, from, until);
 			if (!occurrence) continue;
 			// Use the rule itself instead of its row ID so replacing reminder rows while
 			// editing an event cannot resend an otherwise unchanged occurrence.
 			const ruleKey = reminderRuleKey(reminder);
-			if (ruleKey !== EVENT_DEADLINE_RULE_KEY && +occurrence === +item.end_at) continue;
+			if (ruleKey !== EVENT_DEADLINE_RULE_KEY && +occurrence === +referenceAt) continue;
 			const key = `reminder:configured:${item.id}:${ruleKey}:${occurrence.getTime()}`;
 			if (await env.COMPLETIONIST_KV.get(key)) continue;
-			const remaining = formatRemainingTime(+item.end_at - occurrence.getTime());
-			const message =
-				remaining === 'now'
+			const remaining = formatRemainingTime(+referenceAt - occurrence.getTime());
+			const isStartReminder = reminder.anchor === 'start';
+			const message = isStartReminder
+				? `"${item.task_name}" starts in about ${remaining}.`
+				: remaining === 'now'
 					? `"${item.task_name}" is due now.`
 					: `"${item.task_name}" ends in about ${remaining}.`;
 			const recipients = uniqueIds([item.owner, ...item.assignees.map((a) => a.user_id)]);
 			await env.COMPLETIONIST_QUEUE.send({
-				subject: remaining === 'now' ? `${item.task_name} is due` : `Reminder: ${item.task_name}`,
+				subject: isStartReminder
+					? `Event reminder: ${item.task_name}`
+					: remaining === 'now'
+						? `${item.task_name} is due`
+						: `Deadline reminder: ${item.task_name}`,
 				message,
 				html: reminderHtml(item.task_name, message),
 				data: {
 					type: 'task_reminder',
 					task_id: item.id,
 					reminder_id: reminder.id,
+					reminder_anchor: reminder.anchor ?? 'end',
+					start_at: String(+item.start_at),
 					end_at: String(+item.end_at),
 					reminder_at: String(occurrence.getTime()),
 					url: `/?${new URLSearchParams({ notification: 'task', task_id: item.id })}`

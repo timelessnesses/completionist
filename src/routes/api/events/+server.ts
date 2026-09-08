@@ -36,6 +36,7 @@ type CreateBody = {
 };
 
 type ReminderBody = {
+	anchor?: 'start' | 'end';
 	lead_value: number;
 	lead_unit: ReminderUnit;
 	repeat_value?: number | null;
@@ -379,6 +380,7 @@ function normalizeReminders(value: ReminderBody[] | undefined) {
 	const keys = new Set(
 		normalized.map((reminder) =>
 			[
+				reminder.anchor,
 				reminder.lead_value,
 				reminder.lead_unit,
 				reminder.repeat_value ?? '',
@@ -394,6 +396,9 @@ function normalizeReminders(value: ReminderBody[] | undefined) {
 
 function normalizeReminder(value: ReminderBody) {
 	if (!value || typeof value !== 'object') throw svelteError(400, 'Invalid reminder rule');
+	if (value.anchor !== undefined && value.anchor !== 'start' && value.anchor !== 'end') {
+		throw svelteError(400, 'Reminder anchor must be start or end');
+	}
 	if (!Number.isInteger(value.lead_value) || value.lead_value < 1 || value.lead_value > 1000) {
 		throw svelteError(400, 'Reminder lead value must be an integer from 1 to 1000');
 	}
@@ -415,6 +420,7 @@ function normalizeReminder(value: ReminderBody) {
 		throw svelteError(400, 'Invalid reminder repeat unit');
 	}
 	return {
+		anchor: value.anchor ?? 'end',
 		lead_value: value.lead_value,
 		lead_unit: value.lead_unit,
 		repeat_value: hasRepeatValue ? value.repeat_value! : null,
@@ -605,6 +611,7 @@ function auditEventSnapshot(value: {
 	dependencies?: Array<{ dependency_id: string }>;
 	tags?: Array<{ tag_id: string }>;
 	reminders?: Array<{
+		anchor?: 'start' | 'end';
 		lead_value: number;
 		lead_unit: ReminderUnit;
 		repeat_value: number | null;
@@ -625,6 +632,7 @@ function auditEventSnapshot(value: {
 		dependencyIds: value.dependencies?.map((dependency) => dependency.dependency_id),
 		tagIds: value.tags?.map((tag) => tag.tag_id),
 		reminders: value.reminders?.map((reminder) => ({
+			anchor: reminder.anchor ?? 'end',
 			leadValue: reminder.lead_value,
 			leadUnit: reminder.lead_unit,
 			repeatValue: reminder.repeat_value,

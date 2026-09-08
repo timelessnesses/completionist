@@ -35,7 +35,9 @@ declare global {
 			request_start_time: number;
 		}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			backView?: string;
+		}
 	}
 }
 

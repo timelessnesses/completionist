@@ -1,42 +1,16 @@
-# sv
+# Completionist
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+SvelteKit + Cloudflare Workers based web application for enhanced calendar co-working and scheduling. (Mostly vibe coded by Codex and Kimi K3) that follows Material UI.
 
-## Creating a project
+## Features
 
-If you're seeing this, you've probably already done this step. Congrats!
+- Realtime updates (via WebSockets/Webhooks)
+- Enhanced calendar view + scheduling
+- Rich notification support (Email, Push and Android notifications)
+- User authentication and authorization via Google GSI
+- Relies on only Cloudflare as the only infrastructure provider (Excluding Resend for email)
+- Entirely free to host (if don't exceed the generous free tier) and open source.
 
-```sh
-# create a new project
-npx sv create my-app
-```
+## Android Notifications
 
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-pnpm dlx sv@0.16.3 create --template minimal --types ts --add prettier tailwindcss="plugins:typography,forms" sveltekit-adapter="adapter:cloudflare+cfTarget:workers" drizzle="database:d1" --install pnpm completionist
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
-```
-
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+Download the APK from [here](https://github.com/timelessnesses/completionist-app). The app will provide more enhanced notification.

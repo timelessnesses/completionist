@@ -1,6 +1,7 @@
 import type { ReminderUnit } from '$lib/server/db/schema';
 
 export type ReminderRule = {
+	anchor?: 'start' | 'end';
 	lead_value: number;
 	lead_unit: ReminderUnit;
 	repeat_value: number | null;
@@ -9,12 +10,20 @@ export type ReminderRule = {
 
 export const EVENT_DEADLINE_RULE_KEY = 'task-deadline';
 export const EVENT_DEADLINE_REMINDER = {
+	anchor: 'end',
 	id: EVENT_DEADLINE_RULE_KEY,
 	lead_value: 0,
 	lead_unit: 'hour',
 	repeat_value: null,
 	repeat_unit: null
 } as const satisfies ReminderRule & { id: string };
+
+export function reminderReferenceAt(
+	event: { start_at: Date; end_at: Date },
+	rule: ReminderRule
+): Date {
+	return rule.anchor === 'start' ? event.start_at : event.end_at;
+}
 
 const FIXED_UNIT_MS: Record<Exclude<ReminderUnit, 'month'>, number> = {
 	hour: 60 * 60_000,
@@ -84,14 +93,19 @@ export function nextReminderOccurrence(
 }
 
 export function reminderRuleKey(rule: ReminderRule): string {
-	if (rule.lead_value === 0 && !rule.repeat_value) return EVENT_DEADLINE_RULE_KEY;
-	return [rule.lead_value, rule.lead_unit, rule.repeat_value ?? '', rule.repeat_unit ?? ''].join(
-		':'
-	);
+	if (rule.anchor !== 'start' && rule.lead_value === 0 && !rule.repeat_value)
+		return EVENT_DEADLINE_RULE_KEY;
+	const key = [
+		rule.lead_value,
+		rule.lead_unit,
+		rule.repeat_value ?? '',
+		rule.repeat_unit ?? ''
+	].join(':');
+	return rule.anchor === 'start' ? `start:${key}` : key;
 }
 
 export function reminderRuleSummary(rule: ReminderRule): string {
-	const lead = `${rule.lead_value} ${pluralUnit(rule.lead_unit, rule.lead_value)} before the end`;
+	const lead = `${rule.lead_value} ${pluralUnit(rule.lead_unit, rule.lead_value)} before the ${rule.anchor === 'start' ? 'start' : 'deadline'}`;
 	if (!rule.repeat_value || !rule.repeat_unit) return `Once, ${lead}`;
 	return `${lead}, then every ${rule.repeat_value} ${pluralUnit(rule.repeat_unit, rule.repeat_value)}`;
 }

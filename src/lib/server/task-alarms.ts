@@ -3,6 +3,7 @@ import {
 	EVENT_DEADLINE_RULE_KEY,
 	nextReminderOccurrence,
 	reminderRuleKey,
+	reminderReferenceAt,
 	reminderStartAt,
 	type ReminderRule
 } from '$lib/features/reminders/schedule';
@@ -66,10 +67,11 @@ export async function taskAlarmsForUser(
 			...item.reminders,
 			{ ...EVENT_DEADLINE_REMINDER, created_at: item.created_at }
 		]) {
-			const occurrence = nextNativeAlarmOccurrence(item.end_at, reminder, after);
+			const referenceAt = reminderReferenceAt(item, reminder);
+			const occurrence = nextNativeAlarmOccurrence(referenceAt, reminder, after);
 			if (!occurrence) continue;
 			const ruleKey = reminderRuleKey(reminder);
-			if (ruleKey !== EVENT_DEADLINE_RULE_KEY && +occurrence === +item.end_at) continue;
+			if (ruleKey !== EVENT_DEADLINE_RULE_KEY && +occurrence === +referenceAt) continue;
 			alarms.push({
 				id: `${item.id}:${ruleKey}:${occurrence.getTime()}`,
 				task_id: item.id,
@@ -139,9 +141,10 @@ export async function validateTaskAlarm(
 			? { ...EVENT_DEADLINE_REMINDER, created_at: item.created_at }
 			: item.reminders.find((rule) => reminderRuleKey(rule) === requested.rule_key);
 	if (!reminder) return null;
-	const occurrence = nextNativeAlarmOccurrence(item.end_at, reminder, requested.occurrence_at - 1);
+	const referenceAt = reminderReferenceAt(item, reminder);
+	const occurrence = nextNativeAlarmOccurrence(referenceAt, reminder, requested.occurrence_at - 1);
 	if (!occurrence || occurrence.getTime() !== requested.occurrence_at) return null;
-	if (requested.rule_key !== EVENT_DEADLINE_RULE_KEY && +occurrence === +item.end_at) return null;
+	if (requested.rule_key !== EVENT_DEADLINE_RULE_KEY && +occurrence === +referenceAt) return null;
 	return {
 		id: `${item.id}:${requested.rule_key}:${requested.occurrence_at}`,
 		task_id: item.id,

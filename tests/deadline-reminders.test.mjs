@@ -161,11 +161,89 @@ test('a repeating reminder at the deadline produces only one native and queued r
 	assert.match(delivered[0].message, /is due now/);
 });
 
-test('the default one-day reminder is scheduled 24 hours before the deadline', () => {
-	const end = new Date('2026-09-10T12:30:00+07:00');
-	const rule = { lead_value: 1, lead_unit: 'day', repeat_value: null, repeat_unit: null };
+test('the default one-day event reminder is scheduled before the start', () => {
+	const item = event({
+		start_at: new Date('2026-09-10T12:30:00+07:00'),
+		end_at: new Date('2026-09-11T12:30:00+07:00')
+	});
+	const rule = {
+		anchor: 'start',
+		lead_value: 1,
+		lead_unit: 'day',
+		repeat_value: null,
+		repeat_unit: null
+	};
+	const reference = schedule.reminderReferenceAt(item, rule);
 	assert.equal(
-		+schedule.nextReminderOccurrence(end, rule, +end - 2 * 86_400_000),
-		+end - 86_400_000
+		+schedule.nextReminderOccurrence(reference, rule, +item.start_at - 2 * 86_400_000),
+		+item.start_at - 86_400_000
 	);
+});
+
+test('start and deadline rules coexist with separate native times, keys, and queued messages', async () => {
+	const now = Date.now();
+	const base = {
+		lead_value: 1,
+		lead_unit: 'day',
+		repeat_value: null,
+		repeat_unit: null,
+		created_at: new Date(now - 86_400_000)
+	};
+	const item = event({
+		start_at: new Date(now + 86_400_000 + 60_000),
+		end_at: new Date(now + 2 * 86_400_000 + 60_000),
+		reminders: [
+			{ ...base, id: 'start', anchor: 'start' },
+			{ ...base, id: 'end', anchor: 'end' }
+		]
+	});
+	const api = handlers([item]);
+	const alarms = await api.taskAlarmsForUser({}, 'owner', now);
+	const start = alarms.find((alarm) => alarm.rule_key === 'start:1:day::');
+	const deadline = alarms.find((alarm) => alarm.rule_key === '1:day::');
+	assert.equal(start.occurrence_at, +item.start_at - 86_400_000);
+	assert.equal(deadline.occurrence_at, +item.end_at - 86_400_000);
+	assert.deepEqual(await api.validateTaskAlarm({}, 'owner', start), start);
+	const delivered = [];
+	const env = {
+		COMPLETIONIST_KV: { get: async () => null, put: async () => {} },
+		COMPLETIONIST_QUEUE: { send: async (message) => delivered.push(message) }
+	};
+	for (const time of [start.occurrence_at, deadline.occurrence_at]) {
+		let pending;
+		await api.scheduled({ scheduledTime: time }, env, {
+			waitUntil: (work) => {
+				pending = work;
+			}
+		});
+		await pending;
+	}
+	assert.equal(delivered.length, 2);
+	assert.match(delivered[0].message, /starts in about 1 day/);
+	assert.match(delivered[1].message, /ends in about 1 day/);
+	assert.equal(delivered[0].data.reminder_anchor, 'start');
+	assert.equal(delivered[1].data.reminder_anchor, 'end');
+});
+
+test('legacy reminders retain end timing and repeat-start reminders stop at the start', async () => {
+	const now = Date.now();
+	const base = {
+		lead_value: 1,
+		lead_unit: 'day',
+		repeat_value: 1,
+		repeat_unit: 'day',
+		created_at: new Date(now - 3 * 86_400_000)
+	};
+	const item = event({
+		start_at: new Date(now + 60_000),
+		end_at: new Date(now + 86_400_000),
+		reminders: [{ ...base, anchor: 'start' }]
+	});
+	assert.equal(schedule.reminderReferenceAt(item, base), item.end_at);
+	assert.equal(
+		schedule.reminderRuleKey(base),
+		schedule.reminderRuleKey({ ...base, anchor: 'end' })
+	);
+	const alarms = await handlers([item]).taskAlarmsForUser({}, 'owner', now);
+	assert.deepEqual(alarms.map((alarm) => alarm.rule_key).sort(), ['task-deadline', 'task-start']);
 });

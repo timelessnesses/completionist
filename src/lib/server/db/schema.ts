@@ -165,6 +165,7 @@ export const task_reminder = sqliteTable(
 			.notNull(),
 		lead_value: integer('lead_value').notNull(),
 		lead_unit: text('lead_unit').notNull().$type<ReminderUnit>(),
+		anchor: text('anchor').notNull().default('end').$type<'start' | 'end'>(),
 		repeat_value: integer('repeat_value'),
 		repeat_unit: text('repeat_unit').$type<ReminderUnit>(),
 		created_at: integer('created_at', { mode: 'timestamp_ms' })

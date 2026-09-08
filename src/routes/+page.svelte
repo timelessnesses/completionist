@@ -4,6 +4,7 @@
 	import PeoplePanel from '$lib/components/PeoplePanel.svelte';
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
 	import EventDialog from '$lib/components/EventDialog.svelte';
+	import { backDismiss } from '$lib/back-dismiss';
 	import {
 		mdiPlus,
 		mdiClose,
@@ -805,7 +806,11 @@
 <div class="page">
 	<div class="shell">
 		<!-- Off-canvas drawer on mobile, plain flex child on desktop -->
-		<div class="dock left" class:open={railOpen}>
+		<div
+			class="dock left"
+			class:open={railOpen}
+			use:backDismiss={{ enabled: railOpen, close: () => (railOpen = false) }}
+		>
 			<button class="close" aria-label="Close menu" onclick={closeAll}>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
@@ -834,7 +839,11 @@
 			{onDeleted}
 		/>
 
-		<div class="dock right" class:open={peopleOpen}>
+		<div
+			class="dock right"
+			class:open={peopleOpen}
+			use:backDismiss={{ enabled: peopleOpen, close: () => (peopleOpen = false) }}
+		>
 			<button class="close" aria-label="Close people panel" onclick={closeAll}>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
@@ -893,6 +902,7 @@
 		></div>
 		<div
 			class="notification-notice"
+			use:backDismiss={() => (notificationNotice = null)}
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby="notification-notice-title"
@@ -911,6 +921,7 @@
 		<div class="notification-notice-scrim" role="presentation" onclick={dismissStartingEvent}></div>
 		<div
 			class="notification-notice start-notice"
+			use:backDismiss={dismissStartingEvent}
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby="starting-event-title"
@@ -930,7 +941,11 @@
 
 	{#if taskBoardOpen}
 		<div class="task-overlay" aria-hidden="true" onclick={() => (taskBoardOpen = false)}></div>
-		<section class="task-workbench" aria-label="Task workbench">
+		<section
+			class="task-workbench"
+			aria-label="Task workbench"
+			use:backDismiss={() => (taskBoardOpen = false)}
+		>
 			<header class="task-top">
 				<div class="task-titleblock">
 					<p class="eyebrow">Task board</p>
