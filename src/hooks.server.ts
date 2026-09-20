@@ -35,46 +35,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			}
 		} catch (error) {
 			console.error('Error verifying session token:', error);
-			let user_data:
-				| (typeof user.$inferSelect & { identities: (typeof user_identities.$inferSelect)[] })
-				| undefined;
-			let db: ReturnType<typeof getDb> | undefined;
-			if (error instanceof JWTExpired && refresh_token) {
-				try {
-					db = getDb(env.COMPLETIONIST_DB as D1Database);
-					user_data = await db.query.user.findFirst({
-						where: and(
-							eq(user.refresh_token, await hashString(refresh_token)),
-							gt(user.refresh_token_expiration, new Date())
-						),
-						with: {
-							identities: {
-								where: isNotNull(user_identities.email)
-							}
-						}
-					});
-				} catch (dbError) {
-					console.error('Error looking up user by refresh token:', dbError);
-					refresh_token = '';
-				}
-			}
-
-			if (error instanceof JWTExpired && refresh_token && user_data && db) {
-				console.log('JWT expired, but refresh token is valid. Issuing new session token...');
-				// literally guranteed to exist though...
-				const newJWT = await issuingNewSessionToken(
-					user_data,
-					db,
-					turnThisToUint8Array(env.JWT_SECRET_BASE64 as string)
-				);
-				event.cookies.set('token', newJWT, { path: '/', sameSite: 'strict', maxAge: 3600 });
-				event.locals.user = await verifyJWT(newJWT, env);
-				console.log('New session token issued.');
-			} else {
-				console.error('Error verifying session token:', error);
-				removeAuthInfo(event);
-				/* return redirect(302, "/login"); */
-			}
+			await reissueViaRefreshToken(event, refresh_token, db, env);
 		}
 	} else if (refresh_token) {
 		await reissueViaRefreshToken(event, refresh_token, getDb(env.COMPLETIONIST_DB as D1Database), env);

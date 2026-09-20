@@ -1,48 +1,52 @@
 import { getDb } from '$lib/server/db/index.js';
 import { task, user } from '$lib/server/db/schema.js';
 import { isNull } from 'drizzle-orm';
-export const load = async ({ params, request, platform, locals }) => {
+export const load = async ({ platform, locals }) => {
 	const d1Time = performance.now();
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 
-	const tasks = await db.query.task.findMany({
-		where: isNull(task.deleted_at),
-		with: {
-			parentTask: true,
-			subtasks: true,
-			reminders: true,
-			assignees: {
-				with: {
-					user: true
-				}
-			},
-			dependencies: {
-				with: {
-					dependency: true
-				}
-			},
-			dependents: {
-				with: {
-					task: true
-				}
-			},
-			comments: {
-				with: {
-					user: true
-				}
-			},
-			attachments: {
-				with: {
-					user: true
-				}
-			},
-			tags: {
-				with: {
-					tag: true
+	const [tasks, filters, users] = await db.batch([
+		db.query.task.findMany({
+			where: isNull(task.deleted_at),
+			with: {
+				parentTask: true,
+				subtasks: true,
+				reminders: true,
+				assignees: {
+					with: {
+						user: true
+					}
+				},
+				dependencies: {
+					with: {
+						dependency: true
+					}
+				},
+				dependents: {
+					with: {
+						task: true
+					}
+				},
+				comments: {
+					with: {
+						user: true
+					}
+				},
+				attachments: {
+					with: {
+						user: true
+					}
+				},
+				tags: {
+					with: {
+						tag: true
+					}
 				}
 			}
-		}
-	});
+		}),
+		db.query.task_tag.findMany(),
+		db.query.user.findMany({ where: isNull(user.deleted_at) })
+	])
 	console.log('Tasks loaded in', performance.now() - d1Time, 'ms');
 	const visibleTasks = tasks.map((item) => ({
 		...item,
@@ -51,9 +55,6 @@ export const load = async ({ params, request, platform, locals }) => {
 		dependents: item.dependents.filter((link) => !link.task?.deleted_at)
 	}));
 
-	const filters = await db.query.task_tag.findMany();
-	console.log('Filters loaded in', performance.now() - d1Time, 'ms');
-	const users = await db.query.user.findMany({ where: isNull(user.deleted_at) });
 	console.log('Users loaded in', performance.now() - d1Time, 'ms');
 
 	/* // Detect ownership: the user is an owner if they own any task or are an admin.

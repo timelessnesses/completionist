@@ -16,17 +16,19 @@ export const GET = async ({ platform, url }) => {
 		throw error(401, 'Invalid calendar feed token');
 	}
 	const db = getDb(env.COMPLETIONIST_DB);
-	const account = await db.query.user.findFirst({
-		where: and(eq(user.id, identity.userId), isNull(user.deleted_at)),
-		columns: { calendar_feed_token_version: true }
-	});
+	const [account, events] = await db.batch([
+		db.query.user.findFirst({
+			where: and(eq(user.id, identity.userId), isNull(user.deleted_at)),
+			columns: { calendar_feed_token_version: true }
+		}),
+		db.query.task.findMany({
+			where: isNull(task.deleted_at),
+			with: { tags: { with: { tag: true } } }
+		})
+	]);
 	if (!account || account.calendar_feed_token_version !== identity.version) {
 		throw error(401, 'Calendar feed URL has been revoked');
 	}
-	const events = await db.query.task.findMany({
-		where: isNull(task.deleted_at),
-		with: { tags: { with: { tag: true } } }
-	});
 	const body = buildCalendar(events, url.origin);
 	return new Response(body, {
 		headers: {
