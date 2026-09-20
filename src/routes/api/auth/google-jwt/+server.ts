@@ -92,7 +92,6 @@ export async function POST({ request, cookies, platform }) {
 				name: payload.name as string,
 				logged_in_when: new Date(),
 				jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
-				refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS),
 				whitelisted: isBootstrapAdmin ? 1 : 0,
 				owner: 1
 			})
@@ -121,7 +120,8 @@ export async function POST({ request, cookies, platform }) {
 	await db
 		.update(user)
 		.set({
-			refresh_token: hashed_refresh_token
+			refresh_token: hashed_refresh_token,
+			refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS)
 		})
 		.where(eq(user.id, resolvedUser.id))
 		.run();

@@ -3,7 +3,7 @@ import { error } from 'console';
 import { eq } from 'drizzle-orm/sql/expressions/conditions';
 import * as jose from 'jose';
 import { getDb } from '$lib/server/db';
-import { JWT_EXPIRATION_IN_SECONDS, REFRESH_TOKEN_EXPIRATION_IN_SECONDS } from '$lib/constants';
+import { JWT_EXPIRATION_IN_SECONDS } from '$lib/constants';
 
 export async function issuingNewSessionToken(
 	resolvedUser: typeof user.$inferSelect,
@@ -37,8 +37,7 @@ export async function issuingNewSessionToken(
 		.update(user)
 		.set({
 			logged_in_when: new Date(),
-			jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS),
-			refresh_token_expiration: new Date(Date.now() + REFRESH_TOKEN_EXPIRATION_IN_SECONDS)
+			jwt_expires_at: new Date(Date.now() + JWT_EXPIRATION_IN_SECONDS)
 		})
 		.where(eq(user.id, resolvedUser.id))
 		.run();

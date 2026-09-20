@@ -72,40 +72,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 				console.log('New session token issued.');
 			} else {
 				console.error('Error verifying session token:', error);
-				event.locals.user = undefined;
-				event.cookies.set('token', '', { path: '/', expires: new Date(0) });
-				event.cookies.set('refresh_token', '', { path: '/', expires: new Date(0) });
+				removeAuthInfo(event);
 				/* return redirect(302, "/login"); */
 			}
 		}
 	} else if (refresh_token) {
-		let db = getDb(env.COMPLETIONIST_DB as D1Database);
-		const user_data = await db.query.user.findFirst({
-			where: and(
-				eq(user.refresh_token, await hashString(refresh_token)),
-				gt(user.refresh_token_expiration, new Date())
-			),
-			with: {
-				identities: {
-					where: isNotNull(user_identities.email)
-				}
-			}
-		});
-		if (user_data) {
-			console.log('Refresh token verified.');
-			const newJWT = await issuingNewSessionToken(
-				user_data,
-				db,
-				turnThisToUint8Array(env.JWT_SECRET_BASE64 as string)
-			);
-			event.cookies.set('token', newJWT, { path: '/', sameSite: 'strict', maxAge: 3600 });
-			event.locals.user = await verifyJWT(newJWT, env);
-			console.log('New session token issued.');
-		} else {
-			console.error('Error issuing new session token.');
-			refresh_token = '';
-			event.cookies.set('refresh_token', '', { path: '/', expires: new Date(0) });
-		}
+		await reissueViaRefreshToken(event, refresh_token, getDb(env.COMPLETIONIST_DB as D1Database), env);
 	}
 	const path = event.url.pathname;
 	const isPublic = publicRoutes.some((r) => path.startsWith(r));
@@ -117,3 +89,37 @@ export const handle: Handle = async ({ event, resolve }) => {
 			html.replace('%server-timing%', `${Date.now() - event.locals.request_start_time}`)
 	});
 };
+
+async function reissueViaRefreshToken(event: Parameters<Handle>["0"]["event"], refresh_token: string, db: ReturnType<typeof getDb>, env: Env) { 
+	const user_data = await db.query.user.findFirst({
+		where: and(
+			eq(user.refresh_token, await hashString(refresh_token)),
+			gt(user.refresh_token_expiration, new Date())
+		),
+		with: {
+			identities: {
+				where: isNotNull(user_identities.email)
+			}
+		}
+	});
+	if (user_data) {
+		console.log('Refresh token verified.');
+		const newJWT = await issuingNewSessionToken(
+			user_data,
+			db,
+			turnThisToUint8Array(env.JWT_SECRET_BASE64 as string)
+		);
+		event.cookies.set('token', newJWT, { path: '/', sameSite: 'strict', maxAge: 3600 });
+		event.locals.user = await verifyJWT(newJWT, env);
+		console.log('New session token issued.');
+	} else {
+		console.error('Error issuing new session token.');
+		removeAuthInfo(event);
+	}
+}
+
+function removeAuthInfo(event: Parameters<Handle>["0"]["event"]) {
+	event.locals.user = undefined;
+	event.cookies.set('token', '', { path: '/', expires: new Date(0) });
+	event.cookies.set('refresh_token', '', { path: '/', expires: new Date(0) });
+}
