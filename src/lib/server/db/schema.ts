@@ -63,32 +63,38 @@ function numberToHex(n: number): string {
 	return hex.length === 1 ? '0' + hex : hex;
 }
 
-export const task = sqliteTable('task', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	parent: text('parent').references((): AnySQLiteColumn => task.id),
-	task_name: text('name').notNull(),
-	description: text('description'),
-	color: colorHexType('color').notNull(),
-	owner: text('owner')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	end_at: integer('end_at', { mode: 'timestamp_ms' }).notNull(),
-	status: text('status').notNull().$type<'todo' | 'progress' | 'completed' | 'cancelled'>(),
-	start_at: integer('start_at', { mode: 'timestamp_ms' }).notNull(),
-	// bruv
-	all_day: integer('all_day').notNull().$type<0 | 1>(),
-	// higher importance_value means higher importance
-	importance_value: integer('importance_value').notNull(),
-	completed: integer('completed', { mode: 'timestamp_ms' }),
-	deleted_at: integer('deleted_at', { mode: 'timestamp_ms' })
-},
+export const task = sqliteTable(
+	'task',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		parent: text('parent').references((): AnySQLiteColumn => task.id),
+		task_name: text('name').notNull(),
+		description: text('description'),
+		color: colorHexType('color').notNull(),
+		owner: text('owner')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date()),
+		end_at: integer('end_at', { mode: 'timestamp_ms' }).notNull(),
+		status: text('status').notNull().$type<'todo' | 'progress' | 'completed' | 'cancelled'>(),
+		start_at: integer('start_at', { mode: 'timestamp_ms' }).notNull(),
+		// bruv
+		all_day: integer('all_day').notNull().$type<0 | 1>(),
+		// higher importance_value means higher importance
+		importance_value: integer('importance_value').notNull(),
+		completed: integer('completed', { mode: 'timestamp_ms' }),
+		deleted_at: integer('deleted_at', { mode: 'timestamp_ms' })
+	},
 
-	(table) => [index('task_idx').on(table.id), index('task_parent_idx').on(table.parent), index('task_owner_idx').on(table.owner)]
+	(table) => [
+		index('task_idx').on(table.id),
+		index('task_parent_idx').on(table.parent),
+		index('task_owner_idx').on(table.owner)
+	]
 );
 
 export const user = sqliteTable('user', {
@@ -153,7 +159,10 @@ export const task_assignee = sqliteTable(
 			.$defaultFn(() => new Date())
 	},
 	(table) => {
-		return [primaryKey({ columns: [table.task_id, table.user_id] }), index("task_assignee_user_idx").on(table.user_id)];
+		return [
+			primaryKey({ columns: [table.task_id, table.user_id] }),
+			index('task_assignee_user_idx').on(table.user_id)
+		];
 	}
 );
 
@@ -192,11 +201,16 @@ export const task_dependency = sqliteTable(
 			.$defaultFn(() => new Date())
 	},
 	(table) => {
-		return [primaryKey({ columns: [table.task_id, table.dependency_id] }), index('task_dependency_dependency_idx').on(table.dependency_id)];
+		return [
+			primaryKey({ columns: [table.task_id, table.dependency_id] }),
+			index('task_dependency_dependency_idx').on(table.dependency_id)
+		];
 	}
 );
 
-export const task_comment = sqliteTable('task_comment', {
+export const task_comment = sqliteTable(
+	'task_comment',
+	{
 		id: text('id')
 			.primaryKey()
 			.$defaultFn(() => crypto.randomUUID()),
@@ -214,7 +228,9 @@ export const task_comment = sqliteTable('task_comment', {
 	(table) => [index('task_comment_task_idx').on(table.task_id)]
 );
 
-export const task_attachment = sqliteTable('task_attachment', {
+export const task_attachment = sqliteTable(
+	'task_attachment',
+	{
 		id: text('id')
 			.primaryKey()
 			.$defaultFn(() => crypto.randomUUID()),
@@ -380,7 +396,10 @@ export const task_assigned_tags = sqliteTable(
 			.notNull()
 	},
 	(table) => {
-		return [primaryKey({ columns: [table.task_id, table.tag_id] }), index('task_assigned_tags_tag_idx').on(table.tag_id)];
+		return [
+			primaryKey({ columns: [table.task_id, table.tag_id] }),
+			index('task_assigned_tags_tag_idx').on(table.tag_id)
+		];
 	}
 );
 

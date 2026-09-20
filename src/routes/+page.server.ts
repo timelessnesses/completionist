@@ -46,7 +46,7 @@ export const load = async ({ platform, locals }) => {
 		}),
 		db.query.task_tag.findMany(),
 		db.query.user.findMany({ where: isNull(user.deleted_at) })
-	])
+	]);
 	console.log('Tasks loaded in', performance.now() - d1Time, 'ms');
 	const visibleTasks = tasks.map((item) => ({
 		...item,

@@ -7,7 +7,7 @@ import {
 	turnThisToUint8Array
 } from './routes/api/auth/google-jwt/stuff';
 import { and, eq, gt, isNotNull, lt } from 'drizzle-orm';
-import { getDb } from '$lib/server/db';
+import { getDb, notDeleted } from '$lib/server/db';
 import { user, user_identities } from '$lib/server/db/schema';
 
 const publicRoutes = [
@@ -38,7 +38,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 			await reissueViaRefreshToken(event, refresh_token, db, env);
 		}
 	} else if (refresh_token) {
-		await reissueViaRefreshToken(event, refresh_token, getDb(env.COMPLETIONIST_DB as D1Database), env);
+		await reissueViaRefreshToken(
+			event,
+			refresh_token,
+			getDb(env.COMPLETIONIST_DB as D1Database),
+			env
+		);
 	}
 	const path = event.url.pathname;
 	const isPublic = publicRoutes.some((r) => path.startsWith(r));
@@ -51,11 +56,17 @@ export const handle: Handle = async ({ event, resolve }) => {
 	});
 };
 
-async function reissueViaRefreshToken(event: Parameters<Handle>["0"]["event"], refresh_token: string, db: ReturnType<typeof getDb>, env: Env) { 
+async function reissueViaRefreshToken(
+	event: Parameters<Handle>['0']['event'],
+	refresh_token: string,
+	db: ReturnType<typeof getDb>,
+	env: Env
+) {
 	const user_data = await db.query.user.findFirst({
 		where: and(
 			eq(user.refresh_token, await hashString(refresh_token)),
-			gt(user.refresh_token_expiration, new Date())
+			gt(user.refresh_token_expiration, new Date()),
+			notDeleted(user)
 		),
 		with: {
 			identities: {
@@ -79,7 +90,7 @@ async function reissueViaRefreshToken(event: Parameters<Handle>["0"]["event"], r
 	}
 }
 
-function removeAuthInfo(event: Parameters<Handle>["0"]["event"]) {
+function removeAuthInfo(event: Parameters<Handle>['0']['event']) {
 	event.locals.user = undefined;
 	event.cookies.set('token', '', { path: '/', expires: new Date(0) });
 	event.cookies.set('refresh_token', '', { path: '/', expires: new Date(0) });

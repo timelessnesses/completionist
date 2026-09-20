@@ -1,13 +1,12 @@
-import { getDb } from '$lib/server/db/index.js';
+import { getDb, notDeleted } from '$lib/server/db/index.js';
 import { task, task_tag } from '$lib/server/db/schema.js';
-import { isNull } from 'drizzle-orm';
 import { dev } from '$app/environment';
 
 export const load = async ({ platform, url, locals }) => {
 	const db = getDb((platform?.env as Env).COMPLETIONIST_DB);
 	const [tasks, filters] = await db.batch([
 		db.query.task.findMany({
-			where: isNull(task.deleted_at),
+			where: notDeleted(task),
 			with: {
 				parentTask: true,
 				subtasks: true,

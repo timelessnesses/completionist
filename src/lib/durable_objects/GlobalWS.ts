@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
-import { getDb } from '../server/db/index';
+import { getDb, notDeleted } from '../server/db/index';
 import { user } from '../server/db/schema';
-import { isNull } from 'drizzle-orm';
+import { and, inArray, isNull } from 'drizzle-orm';
 type OnlineUsersRequest = {
 	type: 'online_users';
 };
@@ -79,7 +79,7 @@ export class GlobalWS extends DurableObject {
 			if (payload?.type !== 'direct_message' || !payload.message) {
 				return new Response('missing direct message', { status: 400 });
 			}
-			this.broadcastDirectMessage(payload);
+			await this.broadcastDirectMessage(payload);
 			return new Response('ok', { status: 200 });
 		}
 		if (url.pathname.endsWith('/user-notification') && request.method === 'POST') {
@@ -87,7 +87,7 @@ export class GlobalWS extends DurableObject {
 			if (!Array.isArray(payload?.recipient_user_ids)) {
 				return new Response('missing notification recipients', { status: 400 });
 			}
-			this.broadcastToUsers(payload, payload.recipient_user_ids);
+			await this.broadcastToUsers(payload, payload.recipient_user_ids);
 			return new Response('ok', { status: 200 });
 		}
 		if (url.pathname.endsWith('/preview-debug') && request.method === 'POST') {
@@ -139,12 +139,20 @@ export class GlobalWS extends DurableObject {
 		});
 	}
 
-	broadcastDirectMessage(payload: DirectMessageEvent) {
-		this.broadcastToUsers(payload, [payload.message.to_user_id]);
+	async broadcastDirectMessage(payload: DirectMessageEvent) {
+		await this.broadcastToUsers(payload, [payload.message.to_user_id]);
 	}
 
-	broadcastToUsers(payload: unknown, userIds: string[]) {
+	async broadcastToUsers(payload: unknown, userIds: string[]) {
 		const recipientIds = new Set(userIds);
+		const recepients = await this.db.query.user.findMany({
+			where: and(inArray(user.id, userIds), notDeleted(user)),
+			columns: { id: true }
+		});
+		if (recepients.length !== userIds.length) {
+			console.error('Invalid user IDs in broadcast:', userIds);
+			return;
+		}
 		const message = JSON.stringify(payload);
 		this.ctx.getWebSockets().forEach((socket) => {
 			const session = socket.deserializeAttachment() as ClientSession | null;
@@ -203,7 +211,12 @@ export class GlobalWS extends DurableObject {
 
 		if (data.type === 'ping') {
 			ws.send(
-				JSON.stringify({ type: 'pong', calledArrived: Date.now(), calledWhen: data.calledWhen, durableObjectLocation: this.ctx.props })
+				JSON.stringify({
+					type: 'pong',
+					calledArrived: Date.now(),
+					calledWhen: data.calledWhen,
+					durableObjectLocation: this.ctx.props
+				})
 			);
 			return;
 		}

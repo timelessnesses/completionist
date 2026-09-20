@@ -238,7 +238,9 @@
 				body: JSON.stringify({ id: debugTarget.id, taskName: debugTarget.task_name })
 			});
 			if (!response.ok) throw new Error(await response.text());
-			const result = (await response.json()) as { payload?: Parameters<typeof receiveDebugEvent>[0] };
+			const result = (await response.json()) as {
+				payload?: Parameters<typeof receiveDebugEvent>[0];
+			};
 			if (result.payload) receiveDebugEvent(result.payload);
 		} catch (error) {
 			console.error('Could not broadcast preview debug event', error);
@@ -339,7 +341,6 @@
 		if (event.all_day) return `${prettyDate(toKey(start))} · All day`;
 		return `${prettyDate(toKey(start))} · ${pad2(start.getHours())}:${pad2(start.getMinutes())}–${pad2(end.getHours())}:${pad2(end.getMinutes())}`;
 	}
-
 </script>
 
 {#snippet upcomingQueue(queue: RichTask[])}
@@ -1101,8 +1102,7 @@
 		position: relative;
 		pointer-events: auto;
 		background:
-			linear-gradient(112deg, color-mix(in srgb, var(--countdown-accent) 9%, #fff), #fff 58%),
-			#fff;
+			linear-gradient(112deg, color-mix(in srgb, var(--countdown-accent) 9%, #fff), #fff 58%), #fff;
 		color: #1f1f1f;
 		border: 1px solid #dfe3e8;
 		border-radius: 18px;

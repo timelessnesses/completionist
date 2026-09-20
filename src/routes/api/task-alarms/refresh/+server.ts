@@ -1,6 +1,9 @@
 import { decodeBase64Secret } from '$lib/server/auth-token';
+import { getDb, notDeleted } from '$lib/server/db/index.js';
+import { user } from '$lib/server/db/schema.js';
 import { taskAlarmsForUser, validateTaskAlarm } from '$lib/server/task-alarms';
 import { error, json } from '@sveltejs/kit';
+import { and, eq } from 'drizzle-orm';
 import { jwtVerify, SignJWT } from 'jose';
 
 type RefreshBody = {
@@ -36,6 +39,10 @@ export const POST = async ({ request, platform }) => {
 		body = await request.json();
 	} catch {
 		// Boot and package-replaced refreshes intentionally have no current occurrence.
+	}
+	const db = getDb(env.COMPLETIONIST_DB as D1Database);
+	if (!(await db.query.user.findFirst({ where: and(eq(user.id, userId), notDeleted(user)) }))) {
+		throw error(404, 'User not found');
 	}
 	const hasCurrent =
 		typeof body.task_id === 'string' &&

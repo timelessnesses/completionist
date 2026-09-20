@@ -1,5 +1,5 @@
-import { getDb } from '$lib/server/db';
-import { fcm_tokens, push_subscriptions, task, user_identities } from '$lib/server/db/schema';
+import { getDb, notDeleted } from '$lib/server/db';
+import { fcm_tokens, push_subscriptions, task, user, user_identities } from '$lib/server/db/schema';
 import { and, eq, gte, inArray, isNotNull, isNull, ne } from 'drizzle-orm';
 import * as web_push from 'web-push';
 import { Resend } from 'resend';
@@ -196,16 +196,17 @@ async function handleWebpushMessage(batch: MessageBatch, env: Env, _ctx: Executi
 		const subscriptions = await db
 			.select()
 			.from(push_subscriptions)
-			.where(inArray(push_subscriptions.user_id, recipientIds));
+			.innerJoin(user, eq(push_subscriptions.user_id, user.id))
+			.where(and(inArray(push_subscriptions.user_id, recipientIds), notDeleted(user)));
 
 		for (const subscription of subscriptions) {
 			try {
 				await web_push.sendNotification(
 					{
-						endpoint: subscription.endpoint,
+						endpoint: subscription.push_subs.endpoint,
 						keys: {
-							p256dh: subscription.p256dh,
-							auth: subscription.auth
+							p256dh: subscription.push_subs.p256dh,
+							auth: subscription.push_subs.auth
 						}
 					},
 					JSON.stringify({
@@ -217,7 +218,9 @@ async function handleWebpushMessage(batch: MessageBatch, env: Env, _ctx: Executi
 			} catch (err) {
 				console.error('web push send failed:', err);
 				if (err instanceof web_push.WebPushError && err.statusCode === 410) {
-					await db.delete(push_subscriptions).where(eq(push_subscriptions.id, subscription.id));
+					await db
+						.delete(push_subscriptions)
+						.where(eq(push_subscriptions.id, subscription.push_subs.id));
 				}
 			}
 		}
@@ -246,7 +249,14 @@ async function handleEmailMessage(batch: MessageBatch, env: Env, _ctx: Execution
 				email: user_identities.email
 			})
 			.from(user_identities)
-			.where(and(inArray(user_identities.user_id, recipientIds), isNotNull(user_identities.email)));
+			.innerJoin(user, eq(user_identities.user_id, user.id))
+			.where(
+				and(
+					inArray(user_identities.user_id, recipientIds),
+					isNotNull(user_identities.email),
+					notDeleted(user)
+				)
+			);
 		console.log(`found ${identities.length} identities with email addresses for recipients...`);
 
 		for (const identity of identities) {

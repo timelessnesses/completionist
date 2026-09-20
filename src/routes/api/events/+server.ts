@@ -1,4 +1,4 @@
-import { getDb } from '$lib/server/db/index.js';
+import { getDb, notDeleted } from '$lib/server/db/index.js';
 import {
 	task,
 	task_assignee,
@@ -95,11 +95,18 @@ export const POST = async ({ request, platform, locals }) => {
 		throw svelteError(500, 'Failed to create event');
 	}
 
-	if (body.assignee_ids?.length) {
+	if (body.assignee_ids && body.assignee_ids.length) {
+		const assignees = await db.query.user.findMany({
+			where: and(inArray(userTable.id, body.assignee_ids), notDeleted(userTable)),
+			columns: { id: true }
+		});
+		if (assignees.length !== body.assignee_ids.length) {
+			throw svelteError(400, 'Invalid assignee IDs');
+		}
 		await db.insert(task_assignee).values(
-			body.assignee_ids.map((userId) => ({
+			assignees.map((user) => ({
 				task_id: created.id,
-				user_id: userId
+				user_id: user.id
 			}))
 		);
 	}
@@ -494,7 +501,7 @@ async function assertDependencyTargetsExist(db: ReturnType<typeof getDb>, depend
 async function assertUserExists(db: ReturnType<typeof getDb>, userId: string) {
 	if (!userId) throw svelteError(400, 'owner_id is required');
 	const found = await db.query.user.findFirst({
-		where: eq(userTable.id, userId),
+		where: and(eq(userTable.id, userId), notDeleted(userTable)),
 		columns: { id: true }
 	});
 	if (!found) throw svelteError(400, 'Unknown event owner');
