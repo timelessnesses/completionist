@@ -86,7 +86,10 @@ export const task = sqliteTable('task', {
 	importance_value: integer('importance_value').notNull(),
 	completed: integer('completed', { mode: 'timestamp_ms' }),
 	deleted_at: integer('deleted_at', { mode: 'timestamp_ms' })
-});
+},
+
+	(table) => [index('task_idx').on(table.id), index('task_parent_idx').on(table.parent), index('task_owner_idx').on(table.owner)]
+);
 
 export const user = sqliteTable('user', {
 	id: text('id')
@@ -150,7 +153,7 @@ export const task_assignee = sqliteTable(
 			.$defaultFn(() => new Date())
 	},
 	(table) => {
-		return [primaryKey({ columns: [table.task_id, table.user_id] })];
+		return [primaryKey({ columns: [table.task_id, table.user_id] }), index("task_assignee_user_idx").on(table.user_id)];
 	}
 );
 
@@ -189,42 +192,46 @@ export const task_dependency = sqliteTable(
 			.$defaultFn(() => new Date())
 	},
 	(table) => {
-		return [primaryKey({ columns: [table.task_id, table.dependency_id] })];
+		return [primaryKey({ columns: [table.task_id, table.dependency_id] }), index('task_dependency_dependency_idx').on(table.dependency_id)];
 	}
 );
 
 export const task_comment = sqliteTable('task_comment', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	task_id: text('task_id')
-		.references((): AnySQLiteColumn => task.id)
-		.notNull(),
-	user_id: text('user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	comment: text('comment').notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		task_id: text('task_id')
+			.references((): AnySQLiteColumn => task.id)
+			.notNull(),
+		user_id: text('user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		comment: text('comment').notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [index('task_comment_task_idx').on(table.task_id)]
+);
 
 export const task_attachment = sqliteTable('task_attachment', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	task_id: text('task_id')
-		.references((): AnySQLiteColumn => task.id)
-		.notNull(),
-	user_id: text('user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	file_name: text('file_name').notNull(),
-	file_url: text('file_url').notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		task_id: text('task_id')
+			.references((): AnySQLiteColumn => task.id)
+			.notNull(),
+		user_id: text('user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		file_name: text('file_name').notNull(),
+		file_url: text('file_url').notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [index('task_attachment_task_idx').on(table.task_id)]
+);
 
 export const user_identities = sqliteTable('user_identities', {
 	id: text('id')
@@ -373,7 +380,7 @@ export const task_assigned_tags = sqliteTable(
 			.notNull()
 	},
 	(table) => {
-		return [primaryKey({ columns: [table.task_id, table.tag_id] })];
+		return [primaryKey({ columns: [table.task_id, table.tag_id] }), index('task_assigned_tags_tag_idx').on(table.tag_id)];
 	}
 );
 
