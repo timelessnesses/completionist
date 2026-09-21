@@ -17,12 +17,9 @@ function setup() {
 				entries.push({ url: entries[index].url, marker });
 				index++;
 			},
-			clear: () => {
-				delete entries[index].marker;
-			},
-			back: () => {
+			go: (delta) => {
 				backCalls++;
-				queueMicrotask(() => travel(-1));
+				queueMicrotask(() => travel(delta));
 			}
 		},
 		'views'
@@ -32,8 +29,41 @@ function setup() {
 		assert.ok(index >= 0 && index < entries.length);
 		stack.pop();
 	}
-	return { stack, travel, current: () => entries[index], backCalls: () => backCalls };
+	return {
+		stack,
+		travel,
+		current: () => entries[index],
+		backCalls: () => backCalls,
+		depth: () => index - 1,
+		navigate: (url) => {
+			entries.splice(index + 1);
+			entries.push({ url });
+			index++;
+		}
+	};
 }
+
+test('hierarchy, event and another hierarchy each get their own browser history entry', async () => {
+	const { stack, travel, depth } = setup();
+	const closed = [];
+	for (const name of ['hierarchy', 'event', 'nested hierarchy']) {
+		stack.register(() => closed.push(name));
+		await flush();
+	}
+	assert.equal(depth(), 3);
+	travel(-1);
+	await flush();
+	assert.equal(depth(), 2);
+	assert.deepEqual(closed, ['nested hierarchy']);
+	travel(-1);
+	await flush();
+	assert.equal(depth(), 1);
+	assert.deepEqual(closed, ['nested hierarchy', 'event']);
+	travel(-1);
+	await flush();
+	assert.equal(depth(), 0);
+	assert.deepEqual(closed, ['nested hierarchy', 'event', 'hierarchy']);
+});
 
 test('Back closes the topmost view first, then returns to the previous page', async () => {
 	const { stack, travel, current } = setup();
@@ -53,7 +83,7 @@ test('Back closes the topmost view first, then returns to the previous page', as
 	assert.equal(current().url, '/previous');
 });
 
-test('closing all views together consumes only the temporary history entry', async () => {
+test('closing all views together skips their history entries in one traversal', async () => {
 	const { stack, current, backCalls, travel } = setup();
 	const closeA = stack.register(() => assert.fail('Already closed'));
 	const closeB = stack.register(() => assert.fail('Already closed'));
@@ -72,14 +102,14 @@ test('opening a new view during a pending history cleanup does not dismiss it', 
 	const close = stack.register(() => {});
 	await flush();
 	close();
-	await Promise.resolve(); // history.back requested, popstate not yet delivered
+	await Promise.resolve(); // history.go requested, popstate not yet delivered
 	let dismissed = false;
 	stack.register(() => {
 		dismissed = true;
 	});
 	await flush();
 	assert.equal(dismissed, false);
-	assert.equal(current().marker, 'views');
+	assert.match(current().marker, /^views:/);
 	travel(-1);
 	await flush();
 	assert.equal(dismissed, true);
@@ -98,6 +128,7 @@ test('Escape dismisses only the top view and Forward does not reopen closed view
 	await flush();
 	assert.deepEqual(closed, ['settings', 'panel']);
 	travel(1);
+	await flush();
 	assert.equal(current().marker, undefined);
 	assert.equal(stack.dismissTop(), false);
 });
@@ -174,4 +205,67 @@ test('restored actions are removed and cannot replay after a view is reopened', 
 	travel(-1);
 	await flush();
 	assert.equal(restored, 11);
+});
+
+test('two rapid Back steps unwind two distinct popups without rebuilding history', async () => {
+	const { stack, travel, depth } = setup();
+	const closed = [];
+	for (const name of ['hierarchy', 'event', 'nested hierarchy'])
+		stack.register(() => closed.push(name));
+	await flush();
+	travel(-1);
+	travel(-1);
+	await flush();
+	assert.deepEqual(closed, ['nested hierarchy', 'event']);
+	assert.equal(depth(), 1);
+});
+
+test('Back skips an already closed middle popup without closing the first popup', async () => {
+	const { stack, travel, depth } = setup();
+	const closed = [];
+	stack.register(() => closed.push('first'));
+	const removeMiddle = stack.register(() => assert.fail('Middle popup was already closed'));
+	stack.register(() => closed.push('last'));
+	await flush();
+	removeMiddle();
+	await flush();
+	travel(-1);
+	await flush();
+	assert.deepEqual(closed, ['last']);
+	assert.equal(depth(), 1);
+	travel(-1);
+	await flush();
+	assert.deepEqual(closed, ['last', 'first']);
+});
+
+test('a multi-entry browser history jump closes only the skipped popup layers', async () => {
+	const { stack, travel, depth } = setup();
+	const closed = [];
+	for (const name of ['first', 'second', 'third']) stack.register(() => closed.push(name));
+	await flush();
+	travel(-2);
+	await flush();
+	assert.deepEqual(closed, ['third', 'second']);
+	assert.equal(depth(), 1);
+});
+
+test('the first popup on another route still gets its own history entry', async () => {
+	const { stack, travel, current, navigate } = setup();
+	const closeFirst = stack.register(() => {});
+	await flush();
+	closeFirst();
+	await flush();
+	navigate('/admin');
+	let closed = false;
+	stack.register(() => {
+		closed = true;
+	});
+	await flush();
+	assert.match(current().marker, /^views:/);
+	travel(-1);
+	await flush();
+	assert.equal(closed, true);
+	assert.equal(current().url, '/admin');
+	travel(-1);
+	assert.equal(current().url, '/');
 });

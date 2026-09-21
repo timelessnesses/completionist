@@ -1,4 +1,4 @@
-import { pushState, replaceState } from '$app/navigation';
+import { pushState } from '$app/navigation';
 import { page } from '$app/state';
 import { createActionHistory, createBackStack } from '$lib/features/navigation/back-stack';
 
@@ -12,11 +12,7 @@ function backStack() {
 			marker: () => page.state.backView,
 			url: () => window.location.origin + window.location.pathname,
 			push: (backView) => pushState('', { ...page.state, backView }),
-			clear: () => {
-				const { backView: _, ...state } = page.state;
-				replaceState('', state);
-			},
-			back: () => window.history.back()
+			go: (delta) => window.history.go(delta)
 		},
 		crypto.randomUUID()
 	);
