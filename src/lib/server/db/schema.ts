@@ -91,27 +91,33 @@ export const task = sqliteTable(
 	},
 
 	(table) => [
-		index('task_idx').on(table.id),
 		index('task_parent_idx').on(table.parent),
-		index('task_owner_idx').on(table.owner)
+		index('task_owner_idx').on(table.owner),
+		// The leading columns also support active-task and native-alarm lookups.
+		index('task_reminder_scan_idx').on(table.deleted_at, table.completed, table.end_at),
+		index('task_created_at_idx').on(table.created_at)
 	]
 );
 
-export const user = sqliteTable('user', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	name: text('name').notNull(),
-	logged_in_when: integer('logged_in_when', { mode: 'timestamp_ms' }),
-	jwt_expires_at: integer('jwt_expires_at', { mode: 'timestamp_ms' }),
-	profile_picture_url: text('profile_picture_url'),
-	refresh_token: text('refresh_token'),
-	refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' }),
-	calendar_feed_token_version: integer('calendar_feed_token_version').notNull().default(0),
-	whitelisted: integer('whitelisted').$type<0 | 1>().notNull().default(0),
-	deleted_at: integer('deleted_at', { mode: 'timestamp_ms' }),
-	owner: integer('owner').$type<0 | 1>().notNull().default(0)
-});
+export const user = sqliteTable(
+	'user',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		name: text('name').notNull(),
+		logged_in_when: integer('logged_in_when', { mode: 'timestamp_ms' }),
+		jwt_expires_at: integer('jwt_expires_at', { mode: 'timestamp_ms' }),
+		profile_picture_url: text('profile_picture_url'),
+		refresh_token: text('refresh_token'),
+		refresh_token_expiration: integer('refresh_token_expiration', { mode: 'timestamp_ms' }),
+		calendar_feed_token_version: integer('calendar_feed_token_version').notNull().default(0),
+		whitelisted: integer('whitelisted').$type<0 | 1>().notNull().default(0),
+		deleted_at: integer('deleted_at', { mode: 'timestamp_ms' }),
+		owner: integer('owner').$type<0 | 1>().notNull().default(0)
+	},
+	(table) => [index('user_refresh_token_idx').on(table.refresh_token)]
+);
 
 export const access_policy = sqliteTable('access_policy', {
 	id: integer('id').primaryKey().default(1),
@@ -140,6 +146,7 @@ export const admin_audit_log = sqliteTable(
 			.$defaultFn(() => new Date())
 	},
 	(table) => [
+		index('admin_audit_log_actor_idx').on(table.actor_id),
 		index('admin_audit_log_created_at_idx').on(table.created_at),
 		index('admin_audit_log_entity_idx').on(table.entity_type, table.entity_id)
 	]
@@ -225,7 +232,10 @@ export const task_comment = sqliteTable(
 			.notNull()
 			.$defaultFn(() => new Date())
 	},
-	(table) => [index('task_comment_task_idx').on(table.task_id)]
+	(table) => [
+		index('task_comment_task_idx').on(table.task_id),
+		index('task_comment_user_idx').on(table.user_id)
+	]
 );
 
 export const task_attachment = sqliteTable(
@@ -246,144 +256,206 @@ export const task_attachment = sqliteTable(
 			.notNull()
 			.$defaultFn(() => new Date())
 	},
-	(table) => [index('task_attachment_task_idx').on(table.task_id)]
+	(table) => [
+		index('task_attachment_task_idx').on(table.task_id),
+		index('task_attachment_user_idx').on(table.user_id)
+	]
 );
 
-export const user_identities = sqliteTable('user_identities', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	user_id: text('user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	provider: text('provider').notNull(),
-	provider_user_id: text('provider_user_id').notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	email: text('email')
-});
+export const user_identities = sqliteTable(
+	'user_identities',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		user_id: text('user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		provider: text('provider').notNull(),
+		provider_user_id: text('provider_user_id').notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date()),
+		email: text('email')
+	},
+	(table) => [
+		index('user_identities_user_provider_idx').on(table.user_id, table.provider),
+		index('user_identities_provider_account_idx').on(table.provider, table.provider_user_id),
+		index('user_identities_email_provider_idx').on(table.email, table.provider)
+	]
+);
 
-export const push_subscriptions = sqliteTable('push_subs', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	user_id: text('user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	endpoint: text('endpoint').notNull(),
-	auth: text('auth').notNull(),
-	p256dh: text('p256dh').notNull()
-});
+export const push_subscriptions = sqliteTable(
+	'push_subs',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		user_id: text('user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		endpoint: text('endpoint').notNull(),
+		auth: text('auth').notNull(),
+		p256dh: text('p256dh').notNull()
+	},
+	(table) => [index('push_subs_user_endpoint_idx').on(table.user_id, table.endpoint)]
+);
 
-export const fcm_tokens = sqliteTable('fcm_tokens', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	user_id: text('user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	token: text('token').notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
+export const fcm_tokens = sqliteTable(
+	'fcm_tokens',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		user_id: text('user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		token: text('token').notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [
+		index('fcm_tokens_user_token_idx').on(table.user_id, table.token),
+		index('fcm_tokens_token_idx').on(table.token)
+	]
+);
 
-export const direct_message = sqliteTable('direct_message', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	from_user_id: text('from_user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	to_user_id: text('to_user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	message: text('message'),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
+export const direct_message = sqliteTable(
+	'direct_message',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		from_user_id: text('from_user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		to_user_id: text('to_user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		message: text('message'),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [
+		index('direct_message_conversation_idx').on(
+			table.from_user_id,
+			table.to_user_id,
+			table.created_at
+		),
+		index('direct_message_recipient_idx').on(table.to_user_id)
+	]
+);
 
-export const direct_message_attachment = sqliteTable('direct_message_attachment', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	message_id: text('message_id')
-		.references((): AnySQLiteColumn => direct_message.id)
-		.notNull(),
-	file_name: text('file_name').notNull(),
-	file_url: text('file_url').notNull(),
-	file_key: text('file_key').notNull(),
-	content_type: text('content_type'),
-	size: integer('size'),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
+export const direct_message_attachment = sqliteTable(
+	'direct_message_attachment',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		message_id: text('message_id')
+			.references((): AnySQLiteColumn => direct_message.id)
+			.notNull(),
+		file_name: text('file_name').notNull(),
+		file_url: text('file_url').notNull(),
+		file_key: text('file_key').notNull(),
+		content_type: text('content_type'),
+		size: integer('size'),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [index('direct_message_attachment_message_idx').on(table.message_id)]
+);
 
-export const issues = sqliteTable('issues', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	task_id: text('task_id')
-		.references((): AnySQLiteColumn => task.id)
-		.notNull(),
-	creator_id: text('creator_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	title: text('title').notNull(),
-	description: text('description'),
-	status: text('status').notNull().$type<'open' | 'closed'>(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	closed_at: integer('closed_at', { mode: 'timestamp_ms' })
-});
+export const issues = sqliteTable(
+	'issues',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		task_id: text('task_id')
+			.references((): AnySQLiteColumn => task.id)
+			.notNull(),
+		creator_id: text('creator_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		title: text('title').notNull(),
+		description: text('description'),
+		status: text('status').notNull().$type<'open' | 'closed'>(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date()),
+		closed_at: integer('closed_at', { mode: 'timestamp_ms' })
+	},
+	(table) => [
+		index('issues_task_idx').on(table.task_id),
+		index('issues_creator_idx').on(table.creator_id)
+	]
+);
 
-export const issue_comments = sqliteTable('issue_comments', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	issue_id: text('issue_id')
-		.references((): AnySQLiteColumn => issues.id)
-		.notNull(),
-	user_id: text('user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	comment: text('comment').notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
+export const issue_comments = sqliteTable(
+	'issue_comments',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		issue_id: text('issue_id')
+			.references((): AnySQLiteColumn => issues.id)
+			.notNull(),
+		user_id: text('user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		comment: text('comment').notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [
+		index('issue_comments_issue_idx').on(table.issue_id),
+		index('issue_comments_user_idx').on(table.user_id)
+	]
+);
 
-export const issue_attachments = sqliteTable('issue_attachments', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	issue_id: text('issue_id')
-		.references((): AnySQLiteColumn => issues.id)
-		.notNull(),
-	user_id: text('user_id')
-		.references((): AnySQLiteColumn => user.id)
-		.notNull(),
-	file_name: text('file_name').notNull(),
-	file_url: text('file_url').notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
+export const issue_attachments = sqliteTable(
+	'issue_attachments',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		issue_id: text('issue_id')
+			.references((): AnySQLiteColumn => issues.id)
+			.notNull(),
+		user_id: text('user_id')
+			.references((): AnySQLiteColumn => user.id)
+			.notNull(),
+		file_name: text('file_name').notNull(),
+		file_url: text('file_url').notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [
+		index('issue_attachments_issue_idx').on(table.issue_id),
+		index('issue_attachments_user_idx').on(table.user_id)
+	]
+);
 
-export const task_tag = sqliteTable('task_tags', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	tag: text('tag').notNull(),
-	created_at: integer('created_at', { mode: 'timestamp_ms' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	color: colorHexType('color').notNull()
-});
+export const task_tag = sqliteTable(
+	'task_tags',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		tag: text('tag').notNull(),
+		created_at: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date()),
+		color: colorHexType('color').notNull()
+	},
+	(table) => [index('task_tags_tag_idx').on(table.tag)]
+);
 
 export const task_assigned_tags = sqliteTable(
 	'task_assigned_tags',

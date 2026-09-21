@@ -4,6 +4,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import * as schedule from '../src/lib/features/reminders/schedule.ts';
 import * as priority from '../src/lib/features/tasks/priority.ts';
+import * as visibility from '../src/lib/server/db/visibility.ts';
 
 // Run the production handlers with in-memory database and delivery boundaries.
 function handlers(items) {
@@ -31,6 +32,7 @@ function handlers(items) {
 		'$lib/features/tasks/priority': priority,
 		'$lib/server/db': { getDb: () => db },
 		'$lib/server/db/schema': { task: columns },
+		'$lib/server/db/visibility': visibility,
 		'drizzle-orm': orm,
 		'web-push': {},
 		resend: {},
@@ -246,4 +248,22 @@ test('legacy reminders retain end timing and repeat-start reminders stop at the 
 	);
 	const alarms = await handlers([item]).taskAlarmsForUser({}, 'owner', now);
 	assert.deepEqual(alarms.map((alarm) => alarm.rule_key).sort(), ['task-deadline', 'task-start']);
+});
+
+test('deleted assignees and dependencies do not affect native alarm priority', async () => {
+	const item = event({
+		assignees: [{ user_id: 'assignee', user: { deleted_at: new Date() } }],
+		dependencies: [{ dependency_id: 'hidden', dependency: { deleted_at: new Date() } }]
+	});
+	const api = handlers([item]);
+	const alarms = await api.taskAlarmsForUser({}, 'owner');
+	assert.ok(alarms.length > 0);
+	assert.ok(alarms.every((alarm) => alarm.dependency_count === 0));
+	assert.deepEqual(await api.taskAlarmsForUser({}, 'assignee'), []);
+	assert.equal(await api.validateTaskAlarm({}, 'assignee', alarms[0]), null);
+	item.assignees[0].user.deleted_at = null;
+	item.dependencies[0].dependency.deleted_at = null;
+	const restored = await api.taskAlarmsForUser({}, 'assignee');
+	assert.ok(restored.length > 0);
+	assert.ok(restored.every((alarm) => alarm.dependency_count === 1 && alarm.assigned_to_user));
 });

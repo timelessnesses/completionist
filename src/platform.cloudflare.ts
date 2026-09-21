@@ -301,9 +301,10 @@ async function handleGcmMessage(batch: MessageBatch, env: Env, ctx: ExecutionCon
 		}
 
 		const tokens = await db
-			.select()
+			.select({ token: fcm_tokens.token })
 			.from(fcm_tokens)
-			.where(inArray(fcm_tokens.user_id, recipientIds));
+			.innerJoin(user, eq(fcm_tokens.user_id, user.id))
+			.where(and(inArray(fcm_tokens.user_id, recipientIds), notDeleted(user)));
 
 		for (const { token } of tokens) {
 			const res = await fetch(url, {

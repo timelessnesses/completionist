@@ -1,3 +1,4 @@
+import { visibleRecords } from '$lib/server/db/visibility';
 import { getDb, notDeleted } from '$lib/server/db/index.js';
 import { task, task_tag } from '$lib/server/db/schema.js';
 import { dev } from '$app/environment';
@@ -21,7 +22,7 @@ export const load = async ({ platform, url, locals }) => {
 	const isLocalHost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
 	const debugEnvironment = dev ? 'vite' : isLocalHost && platform?.env ? 'wrangler' : null;
 	return {
-		event: tasks,
+		event: visibleRecords(tasks),
 		filters,
 		workerTime: Date.now(),
 		workerEdge: platform?.cf?.colo ?? 'local',

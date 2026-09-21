@@ -1,3 +1,4 @@
+import { visibleRecords, visibleRecord } from '$lib/server/db/visibility';
 import {
 	EVENT_DEADLINE_REMINDER,
 	EVENT_DEADLINE_RULE_KEY,
@@ -35,10 +36,15 @@ export async function taskAlarmsForUser(
 	after = Date.now()
 ): Promise<NativeTaskAlarm[]> {
 	const db = getDb(env.COMPLETIONIST_DB);
-	const candidates = await db.query.task.findMany({
+	const candidateRows = await db.query.task.findMany({
 		where: and(isNull(task.deleted_at), isNull(task.completed), ne(task.status, 'cancelled')),
-		with: { reminders: true, assignees: true, dependencies: true }
+		with: {
+			reminders: true,
+			assignees: { with: { user: { columns: { deleted_at: true } } } },
+			dependencies: { with: { dependency: { columns: { deleted_at: true } } } }
+		}
 	});
+	const candidates = visibleRecords(candidateRows);
 	const alarms: NativeTaskAlarm[] = [];
 	for (const item of candidates) {
 		if (item.owner !== userId && !item.assignees.some((link) => link.user_id === userId)) continue;
@@ -103,15 +109,20 @@ export async function validateTaskAlarm(
 ): Promise<NativeTaskAlarm | null> {
 	if (Math.abs(Date.now() - requested.occurrence_at) > 5 * 60_000) return null;
 	const db = getDb(env.COMPLETIONIST_DB);
-	const item = await db.query.task.findFirst({
+	const storedItem = await db.query.task.findFirst({
 		where: and(
 			eq(task.id, requested.task_id),
 			isNull(task.deleted_at),
 			isNull(task.completed),
 			ne(task.status, 'cancelled')
 		),
-		with: { reminders: true, assignees: true, dependencies: true }
+		with: {
+			reminders: true,
+			assignees: { with: { user: { columns: { deleted_at: true } } } },
+			dependencies: { with: { dependency: { columns: { deleted_at: true } } } }
+		}
 	});
+	const item = storedItem ? visibleRecord(storedItem) : null;
 	if (!item) return null;
 	if (item.owner !== userId && !item.assignees.some((link) => link.user_id === userId)) return null;
 	const priority = taskPriority(item, userId);

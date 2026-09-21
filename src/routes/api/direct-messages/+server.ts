@@ -1,6 +1,6 @@
 import { getDb } from '$lib/server/db';
 import { direct_message, direct_message_attachment, user } from '$lib/server/db/schema';
-import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import { json, error as svelteError } from '@sveltejs/kit';
 
 type AttachmentInput = {
@@ -37,14 +37,17 @@ export const GET = async ({ url, platform, locals }) => {
 	await assertUserExists(db, peerId);
 
 	const rows = await db.query.direct_message.findMany({
-		where: or(
-			and(
-				eq(direct_message.from_user_id, locals.user.user_id),
-				eq(direct_message.to_user_id, peerId)
-			),
-			and(
-				eq(direct_message.from_user_id, peerId),
-				eq(direct_message.to_user_id, locals.user.user_id)
+		where: and(
+			activeMessageParticipants(db),
+			or(
+				and(
+					eq(direct_message.from_user_id, locals.user.user_id),
+					eq(direct_message.to_user_id, peerId)
+				),
+				and(
+					eq(direct_message.from_user_id, peerId),
+					eq(direct_message.to_user_id, locals.user.user_id)
+				)
 			)
 		),
 		orderBy: asc(direct_message.created_at),
@@ -154,7 +157,7 @@ async function assertUserExists(db: ReturnType<typeof getDb>, id: string) {
 
 async function fetchDirectMessage(db: ReturnType<typeof getDb>, id: string) {
 	return db.query.direct_message.findFirst({
-		where: eq(direct_message.id, id),
+		where: and(eq(direct_message.id, id), activeMessageParticipants(db)),
 		with: {
 			from_user: {
 				columns: {
@@ -173,6 +176,14 @@ async function fetchDirectMessage(db: ReturnType<typeof getDb>, id: string) {
 			attachments: true
 		}
 	});
+}
+
+function activeMessageParticipants(db: ReturnType<typeof getDb>) {
+	const activeUsers = db.select({ id: user.id }).from(user).where(isNull(user.deleted_at));
+	return and(
+		inArray(direct_message.from_user_id, activeUsers),
+		inArray(direct_message.to_user_id, activeUsers)
+	);
 }
 
 function normalizeAttachments(attachments: AttachmentInput[]): AttachmentInput[] {

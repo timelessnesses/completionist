@@ -144,15 +144,12 @@ export class GlobalWS extends DurableObject {
 	}
 
 	async broadcastToUsers(payload: unknown, userIds: string[]) {
-		const recipientIds = new Set(userIds);
-		const recepients = await this.db.query.user.findMany({
+		if (userIds.length === 0) return;
+		const recipients = await this.db.query.user.findMany({
 			where: and(inArray(user.id, userIds), notDeleted(user)),
 			columns: { id: true }
 		});
-		if (recepients.length !== userIds.length) {
-			console.error('Invalid user IDs in broadcast:', userIds);
-			return;
-		}
+		const recipientIds = new Set(recipients.map((recipient) => recipient.id));
 		const message = JSON.stringify(payload);
 		this.ctx.getWebSockets().forEach((socket) => {
 			const session = socket.deserializeAttachment() as ClientSession | null;

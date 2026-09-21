@@ -400,7 +400,7 @@
 				created_at: Date | string;
 				comment: string;
 				user_id: string;
-				user?: UserSummary;
+				user?: UserSummary | null;
 		  }
 		| {
 				type: 'attachment';
@@ -409,7 +409,7 @@
 				file_name: string;
 				file_url: string;
 				user_id: string;
-				user?: UserSummary;
+				user?: UserSummary | null;
 		  };
 
 	function openTaskBoard() {
@@ -1226,7 +1226,7 @@
 											{#each mergedActivity(selectedTask) as item (item.type + item.id)}
 												<div class="thread-item" class:attachment={item.type === 'attachment'}>
 													<div class="comment-head">
-														<strong>{item.user?.name ?? item.user_id}</strong>
+														<strong>{item.user?.name ?? 'Deleted user'}</strong>
 														<span>{new Date(item.created_at).toLocaleString()}</span>
 													</div>
 													{#if item.type === 'comment'}

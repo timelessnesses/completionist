@@ -25,13 +25,19 @@ export interface Person {
 export type TaskColor = Color;
 export type FilterTag = InferSelectModel<typeof task_tag>;
 export type UserSummary = InferSelectModel<typeof user>;
-export type TaskAssigneeLink = InferSelectModel<typeof task_assignee> & { user?: UserSummary };
-export type TaskDependencyLink = InferSelectModel<typeof task_dependency> & {
-	dependency?: CalendarEvent;
-	task?: CalendarEvent;
+export type TaskAssigneeLink = InferSelectModel<typeof task_assignee> & {
+	user?: UserSummary | null;
 };
-export type TaskCommentEntry = InferSelectModel<typeof task_comment> & { user?: UserSummary };
-export type TaskAttachmentEntry = InferSelectModel<typeof task_attachment> & { user?: UserSummary };
+export type TaskDependencyLink = InferSelectModel<typeof task_dependency> & {
+	dependency?: CalendarEvent | null;
+	task?: CalendarEvent | null;
+};
+export type TaskCommentEntry = InferSelectModel<typeof task_comment> & {
+	user?: UserSummary | null;
+};
+export type TaskAttachmentEntry = InferSelectModel<typeof task_attachment> & {
+	user?: UserSummary | null;
+};
 export type TaskTagLink = InferSelectModel<typeof task_assigned_tags> & { tag?: FilterTag };
 export type TaskReminder = InferSelectModel<typeof task_reminder>;
 

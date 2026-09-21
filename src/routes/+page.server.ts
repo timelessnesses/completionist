@@ -1,3 +1,4 @@
+import { visibleRecords } from '$lib/server/db/visibility';
 import { getDb } from '$lib/server/db/index.js';
 import { task, user } from '$lib/server/db/schema.js';
 import { isNull } from 'drizzle-orm';
@@ -48,12 +49,7 @@ export const load = async ({ platform, locals }) => {
 		db.query.user.findMany({ where: isNull(user.deleted_at) })
 	]);
 	console.log('Tasks loaded in', performance.now() - d1Time, 'ms');
-	const visibleTasks = tasks.map((item) => ({
-		...item,
-		subtasks: item.subtasks.filter((subtask) => !subtask.deleted_at),
-		dependencies: item.dependencies.filter((link) => !link.dependency?.deleted_at),
-		dependents: item.dependents.filter((link) => !link.task?.deleted_at)
-	}));
+	const visibleTasks = visibleRecords(tasks);
 
 	console.log('Users loaded in', performance.now() - d1Time, 'ms');
 

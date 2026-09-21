@@ -1,3 +1,4 @@
+import { visibleRecord } from '$lib/server/db/visibility';
 import { getDb, notDeleted } from '$lib/server/db/index.js';
 import {
 	task,
@@ -157,7 +158,9 @@ export const POST = async ({ request, platform, locals }) => {
 	);
 	const createdRecipientIds = createdAssigneeIds.length
 		? createdAssigneeIds
-		: (await db.select({ id: userTable.id }).from(userTable)).map((recipient) => recipient.id);
+		: (await db.select({ id: userTable.id }).from(userTable).where(notDeleted(userTable))).map(
+				(recipient) => recipient.id
+			);
 	if (user.admin) {
 		await recordAdminEventAction(db, {
 			actorId: user.user_id,
@@ -186,7 +189,7 @@ export const POST = async ({ request, platform, locals }) => {
 		)
 	);
 
-	return json(createdWithRelationsFirst, { status: 201 });
+	return json(visibleRecord(createdWithRelationsFirst), { status: 201 });
 };
 
 export const PUT = async ({ request, platform, locals, url }) => {
@@ -235,6 +238,15 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	if (dependencyIds !== undefined) {
 		await assertAcyclicDependencyChange(db, id, dependencyIds);
 	}
+	if (body.assignee_ids?.length) {
+		const assignees = await db.query.user.findMany({
+			where: and(inArray(userTable.id, body.assignee_ids), notDeleted(userTable)),
+			columns: { id: true }
+		});
+		if (assignees.length !== body.assignee_ids.length) {
+			throw svelteError(400, 'Invalid assignee IDs');
+		}
+	}
 
 	const nextStart = typeof body.start_at === 'number' ? new Date(body.start_at) : existing.start_at;
 	const nextEnd = typeof body.end_at === 'number' ? new Date(body.end_at) : existing.end_at;
@@ -266,7 +278,9 @@ export const PUT = async ({ request, platform, locals, url }) => {
 		body.tags !== undefined ||
 		reminders !== undefined;
 	if (Object.keys(updates).length === 0 && !hasRelationUpdates) {
-		return json(existing, { status: 200 });
+		return json(visibleRecord((await fetchTaskWithRelations(db, id))[0] ?? existing), {
+			status: 200
+		});
 	}
 
 	if (Object.keys(updates).length > 0) {
@@ -274,7 +288,18 @@ export const PUT = async ({ request, platform, locals, url }) => {
 	}
 
 	if (body.assignee_ids !== undefined) {
-		await db.delete(task_assignee).where(eq(task_assignee.task_id, id));
+		// Hidden assignments are not in the editor payload; retain them for account restoration.
+		await db
+			.delete(task_assignee)
+			.where(
+				and(
+					eq(task_assignee.task_id, id),
+					inArray(
+						task_assignee.user_id,
+						db.select({ id: userTable.id }).from(userTable).where(notDeleted(userTable))
+					)
+				)
+			);
 		if (body.assignee_ids.length) {
 			await db.insert(task_assignee).values(
 				body.assignee_ids.map((userId) => ({
@@ -366,7 +391,7 @@ export const PUT = async ({ request, platform, locals, url }) => {
 		)
 	);
 
-	return json(updated, { status: 200 });
+	return json(visibleRecord(updated), { status: 200 });
 };
 
 function normalizeDependencyIds(value: unknown): string[] {
@@ -460,7 +485,18 @@ async function replaceDependencyLinks(
 	taskId: string,
 	dependencyIds: string[]
 ) {
-	const removeExisting = db.delete(task_dependency).where(eq(task_dependency.task_id, taskId));
+	// Replace only visible links so restoring a deleted dependency reconnects it.
+	const removeExisting = db
+		.delete(task_dependency)
+		.where(
+			and(
+				eq(task_dependency.task_id, taskId),
+				inArray(
+					task_dependency.dependency_id,
+					db.select({ id: task.id }).from(task).where(isNull(task.deleted_at))
+				)
+			)
+		);
 	try {
 		if (dependencyIds.length === 0) {
 			await removeExisting;
@@ -596,12 +632,7 @@ async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) 
 			}
 		}
 	});
-	return rows.map((item) => ({
-		...item,
-		subtasks: item.subtasks.filter((subtask) => !subtask.deleted_at),
-		dependencies: item.dependencies.filter((link) => !link.dependency?.deleted_at),
-		dependents: item.dependents.filter((link) => !link.task?.deleted_at)
-	}));
+	return rows;
 }
 
 function auditEventSnapshot(value: {
@@ -740,5 +771,5 @@ export const PATCH = async ({ platform, locals, url }) => {
 	} catch {
 		/* best effort */
 	}
-	return json(restored ?? { ...existing, deleted_at: null });
+	return json(visibleRecord(restored ?? { ...existing, deleted_at: null }));
 };

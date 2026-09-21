@@ -1,3 +1,4 @@
+import { visibleRecord } from '$lib/server/db/visibility';
 import { getDb } from '$lib/server/db/index.js';
 import { task, task_comment } from '$lib/server/db/schema.js';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -47,12 +48,7 @@ async function fetchTaskWithRelations(db: ReturnType<typeof getDb>, id: string) 
 			}
 		}
 	});
-	return rows.map((item) => ({
-		...item,
-		subtasks: item.subtasks.filter((subtask) => !subtask.deleted_at),
-		dependencies: item.dependencies.filter((link) => !link.dependency?.deleted_at),
-		dependents: item.dependents.filter((link) => !link.task?.deleted_at)
-	}));
+	return rows;
 }
 
 export const POST = async ({ request, platform, locals }) => {
@@ -114,5 +110,5 @@ export const POST = async ({ request, platform, locals }) => {
 		)
 	);
 
-	return json(updated, { status: 201 });
+	return json(visibleRecord(updated), { status: 201 });
 };
