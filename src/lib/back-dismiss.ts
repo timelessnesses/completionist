@@ -1,6 +1,6 @@
 import { pushState, replaceState } from '$app/navigation';
 import { page } from '$app/state';
-import { createBackStack } from '$lib/features/navigation/back-stack';
+import { createActionHistory, createBackStack } from '$lib/features/navigation/back-stack';
 
 type Options = { enabled: boolean; close: () => void };
 let stack: ReturnType<typeof createBackStack> | undefined;
@@ -32,6 +32,10 @@ function backStack() {
 		{ capture: true }
 	);
 	return stack;
+}
+
+export function createBackActions() {
+	return createActionHistory((restore) => backStack().register(restore));
 }
 
 /** Attach to a dialog, or pass enabled for a permanently mounted drawer. */

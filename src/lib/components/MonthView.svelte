@@ -4,6 +4,7 @@
 		mdiChevronLeft,
 		mdiChevronRight,
 		mdiMenu,
+		mdiFileTreeOutline,
 		mdiAccountMultipleOutline,
 		mdiCheckboxMarkedCircleOutline,
 		mdiTriangleOutline
@@ -34,7 +35,9 @@
 		viewerId,
 		isAdmin,
 		onUpdated,
-		onDeleted
+		onDeleted,
+		onSelectEvent,
+		onHierarchy
 	}: {
 		onMenu?: () => void;
 		onPeople?: () => void;
@@ -46,6 +49,8 @@
 		isAdmin: boolean;
 		onUpdated?: (ev: RichTask) => void;
 		onDeleted?: (id: string) => void;
+		onSelectEvent?: (event: RichTask) => void;
+		onHierarchy?: (event?: RichTask) => void;
 	} = $props();
 
 	let view = $state<View>('Month');
@@ -78,6 +83,10 @@
 	}
 
 	function openEvent(ev: RichTask) {
+		if (onSelectEvent) {
+			onSelectEvent(ev);
+			return;
+		}
 		selectedEvent = ev;
 		detailsOpen = true;
 	}
@@ -148,6 +157,9 @@
 				</button>
 			</div>
 			<span class="spacer"></span>
+			<button class="hierarchy-trigger" onclick={() => onHierarchy?.()} aria-haspopup="dialog">
+				<MdiIcon path={mdiFileTreeOutline} size={16} /> Hierarchy
+			</button>
 			<div class="segmented" role="tablist" aria-label="Calendar view switch">
 				<button class:active={view === 'Month'} onclick={() => (view = 'Month')}>Month</button>
 				<button class:active={view === 'Week'} onclick={() => (view = 'Week')}>Week</button>
@@ -250,10 +262,26 @@
 		ondeleted={handleDeleted}
 		{users}
 		{tasks}
+		onHierarchy={(event) => {
+			onHierarchy?.(event);
+		}}
 	/>
 </section>
 
 <style>
+	.hierarchy-trigger {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 10px;
+		border: 1px solid var(--color-border);
+		border-radius: 9px;
+		background: var(--color-background);
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 12px;
+		cursor: pointer;
+	}
 	.main {
 		flex: 1;
 		height: 100%;

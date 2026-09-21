@@ -4,7 +4,9 @@
 	import PeoplePanel from '$lib/components/PeoplePanel.svelte';
 	import MdiIcon from '$lib/components/MdiIcon.svelte';
 	import EventDialog from '$lib/components/EventDialog.svelte';
-	import { backDismiss } from '$lib/back-dismiss';
+	import TaskPopupStack from '$lib/components/TaskPopupStack.svelte';
+	import { createTaskPopup, type TaskPopup } from '$lib/features/navigation/task-popup';
+	import { backDismiss, createBackActions } from '$lib/back-dismiss';
 	import {
 		mdiPlus,
 		mdiClose,
@@ -19,13 +21,14 @@
 		mdiCircleOutline,
 		mdiCheckboxMarkedCircleOutline,
 		mdiChevronDown,
-		mdiChevronRight
+		mdiChevronRight,
+		mdiFileTreeOutline
 	} from '@mdi/js';
 	import type { PageProps } from './$types';
 	import type { RichTask, UserSummary } from '$lib/features/tasks/types';
 	import { isProjectLike } from '$lib/features/tasks/project';
 	import { colorToHex, hexToColor } from '$lib/features/tasks/color';
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { subscribeWS } from '$lib/websocket.svelte';
 	import { invalidateAll, replaceState } from '$app/navigation';
 	import { page } from '$app/state';
@@ -45,9 +48,11 @@
 	let railOpen = $state(false);
 	let peopleOpen = $state(false);
 	let createOpen = $state(false);
-	let miniEvent = $state<RichTask | null>(null);
-	let miniEventOpen = $state(false);
 	let taskBoardOpen = $state(false);
+	let taskPopups = $state<TaskPopup[]>([]);
+	function openHierarchy(task?: RichTask) {
+		taskPopups = [...taskPopups, createTaskPopup('hierarchy', task?.id)];
+	}
 	let selectedTaskId = $state<string | null>(null);
 	let taskSearch = $state('');
 	let foldedTaskIds = $state(new Set<string>());
@@ -87,6 +92,34 @@
 		tagDrafts: []
 	});
 	let currentTime = $state(Date.now());
+	const boardActions = createBackActions();
+	onDestroy(() => boardActions.clear());
+	$effect(() => {
+		if (!taskBoardOpen) boardActions.clear();
+	});
+
+	function selectBoardTask(task: RichTask) {
+		if (task.id === selectedTask?.id) return;
+		const previous = {
+			id: selectedTask?.id,
+			draft: $state.snapshot(taskDraft),
+			commentDraft,
+			tagDraft,
+			dependencyDraft,
+			assigneeDraft
+		};
+		boardActions.remember(async () => {
+			if (!previous.id || !taskMap.has(previous.id)) return;
+			selectedTaskId = previous.id;
+			await tick();
+			taskDraft = previous.draft;
+			commentDraft = previous.commentDraft;
+			tagDraft = previous.tagDraft;
+			dependencyDraft = previous.dependencyDraft;
+			assigneeDraft = previous.assigneeDraft;
+		});
+		selectedTaskId = task.id;
+	}
 
 	function closeAll() {
 		railOpen = false;
@@ -481,8 +514,7 @@
 	}
 
 	function openMiniEvent(task: RichTask) {
-		miniEvent = task;
-		miniEventOpen = true;
+		taskPopups = [...taskPopups, createTaskPopup('event', task.id)];
 	}
 
 	function syncTaskDraft(task: RichTask | null) {
@@ -823,10 +855,12 @@
 				{currentTime}
 				onCreate={() => (createOpen = true)}
 				onSelectEvent={openMiniEvent}
+				onHierarchy={openHierarchy}
 			/>
 		</div>
 
 		<MonthView
+			onSelectEvent={openMiniEvent}
 			onMenu={() => (railOpen = true)}
 			onPeople={() => (peopleOpen = true)}
 			{filters}
@@ -837,6 +871,7 @@
 			{isAdmin}
 			{onUpdated}
 			{onDeleted}
+			onHierarchy={openHierarchy}
 		/>
 
 		<div
@@ -875,24 +910,18 @@
 			{users}
 			tasks={events}
 		/>
-		<EventDialog
-			bind:open={miniEventOpen}
-			event={miniEvent}
-			canEdit={miniEvent ? canEditEvent(miniEvent) : false}
-			canComplete={miniEvent ? canComplete(miniEvent) : false}
-			onupdated={(event) => {
-				miniEvent = event;
-				onUpdated(event);
-			}}
-			ondeleted={(id) => {
-				miniEvent = null;
-				onDeleted(id);
-			}}
-			tags={filters}
-			{users}
-			tasks={events}
-		/>
 	</div>
+
+	<TaskPopupStack
+		bind:entries={taskPopups}
+		tasks={events}
+		{users}
+		tags={filters}
+		{viewerId}
+		{isAdmin}
+		onupdated={onUpdated}
+		ondeleted={onDeleted}
+	/>
 
 	{#if notificationNotice}
 		<div
@@ -958,6 +987,9 @@
 					<MdiIcon path={mdiMagnify} size={18} />
 					<input type="search" placeholder="Search tasks, notes, or tags" bind:value={taskSearch} />
 				</label>
+				<button class="ghost-toggle" onclick={() => openHierarchy()}
+					><MdiIcon path={mdiFileTreeOutline} size={18} />Hierarchy</button
+				>
 			</header>
 
 			<div class="task-grid">
@@ -991,7 +1023,7 @@
 								class="task-pill"
 								class:selected={selectedTask?.id === task.id}
 								class:completed={!!task.completed}
-								onclick={() => (selectedTaskId = task.id)}
+								onclick={() => selectBoardTask(task)}
 							>
 								<div class="pill-head">
 									<span class="status-dot" style:background={colorToHex(task.color)}></span>

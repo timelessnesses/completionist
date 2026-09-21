@@ -8,6 +8,7 @@
 		mdiCircleOutline,
 		mdiClose,
 		mdiDeleteOutline,
+		mdiFileTreeOutline,
 		mdiLinkVariant,
 		mdiMagnify,
 		mdiPaperclip,
@@ -65,7 +66,9 @@
 		tasks = [],
 		oncreated,
 		onupdated,
-		ondeleted
+		ondeleted,
+		onclose,
+		onHierarchy
 	}: {
 		open?: boolean;
 		event?: RichTask | null;
@@ -77,6 +80,8 @@
 		oncreated?: (event: RichTask) => void;
 		onupdated?: (event: RichTask) => void;
 		ondeleted?: (id: string) => void;
+		onclose?: () => void;
+		onHierarchy?: (event: RichTask) => void;
 	} = $props();
 
 	let title = $state('');
@@ -282,6 +287,7 @@
 	function close() {
 		open = false;
 		resetTransientState();
+		onclose?.();
 	}
 
 	function addTag(tag: FilterTag) {
@@ -544,6 +550,11 @@
 		<div class="grabber" aria-hidden="true"></div>
 		<header class="head">
 			<h2>{dialogTitle}</h2>
+			{#if event && onHierarchy}<button
+					class="hierarchy-button"
+					onclick={() => event && onHierarchy?.(event)}
+					><MdiIcon path={mdiFileTreeOutline} size={17} />Hierarchy</button
+				>{/if}
 			<button class="icon" aria-label="Close" onclick={close}>
 				<MdiIcon path={mdiClose} size={20} />
 			</button>
@@ -988,6 +999,20 @@
 {/if}
 
 <style>
+	.hierarchy-button {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: auto;
+		padding: 7px 10px;
+		border: 1px solid var(--color-border);
+		border-radius: 9px;
+		background: var(--color-background);
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 12px;
+		cursor: pointer;
+	}
 	.task-dialog--event {
 		width: min(540px, calc(100vw - 32px));
 		max-height: calc(100dvh - 48px);

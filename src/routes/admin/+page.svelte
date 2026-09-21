@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { fly } from 'svelte/transition';
+	import { backDismiss } from '$lib/back-dismiss';
 	import {
 		mdiAccountMultipleOutline,
 		mdiAccountPlusOutline,
@@ -813,6 +814,7 @@
 	<button class="scrim" aria-label="Close spreadsheet importer" onclick={closeImporter}></button>
 	<aside
 		class="editor importer"
+		use:backDismiss={() => (importerOpen = false)}
 		aria-label="Import account spreadsheet"
 		transition:fly={{ x: 30, duration: 260 }}
 	>
@@ -882,6 +884,7 @@
 	<button class="scrim" aria-label="Close editor" onclick={closeEditor}></button>
 	<aside
 		class="editor"
+		use:backDismiss={() => (editorOpen = false)}
 		aria-label={editingId ? 'Edit event' : 'Create event'}
 		transition:fly={{ x: 30, duration: 260 }}
 	>

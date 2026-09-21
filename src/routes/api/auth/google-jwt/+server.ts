@@ -12,6 +12,7 @@ import {
 } from './stuff';
 import { getDb } from '$lib/server/db/index.js';
 import {
+	JWT_EXPIRATION,
 	JWT_EXPIRATION_IN_SECONDS,
 	REFRESH_TOKEN_EXPIRATION,
 	REFRESH_TOKEN_EXPIRATION_IN_SECONDS
@@ -136,7 +137,7 @@ export async function POST({ request, cookies, platform }) {
 		// httpOnly: true,
 		sameSite: 'strict',
 		secure: request.url.startsWith('https://'),
-		maxAge: 3600
+		maxAge: JWT_EXPIRATION
 	});
 	cookies.set('refresh_token', refresh_token, {
 		path: '/',

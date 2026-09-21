@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createBackStack } from '../src/lib/features/navigation/back-stack.ts';
+import { createActionHistory, createBackStack } from '../src/lib/features/navigation/back-stack.ts';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -100,4 +100,78 @@ test('Escape dismisses only the top view and Forward does not reopen closed view
 	travel(1);
 	assert.equal(current().marker, undefined);
 	assert.equal(stack.dismissTop(), false);
+});
+
+test('Back retraces nested popup and selection actions before closing the previous popup', async () => {
+	const { stack, travel, current } = setup();
+	const visible = ['event'];
+	let selection = 'all';
+	stack.register(() => visible.pop());
+	visible.push('hierarchy');
+	stack.register(() => visible.pop());
+	const actions = createActionHistory((restore) => stack.register(restore));
+	actions.remember(() => {
+		selection = 'all';
+	});
+	selection = 'project';
+	visible.push('child event');
+	stack.register(() => visible.pop());
+	await flush();
+	travel(-1);
+	await flush();
+	assert.deepEqual(visible, ['event', 'hierarchy']);
+	assert.equal(selection, 'project');
+	travel(-1);
+	await flush();
+	assert.equal(selection, 'all');
+	assert.deepEqual(visible, ['event', 'hierarchy']);
+	travel(-1);
+	await flush();
+	assert.deepEqual(visible, ['event']);
+	travel(-1);
+	await flush();
+	assert.deepEqual(visible, []);
+	assert.equal(current().url, '/');
+	travel(-1);
+	assert.equal(current().url, '/previous');
+});
+
+test('explicit popup closure discards its action history without replaying actions', async () => {
+	const { stack, travel } = setup();
+	let parentClosed = false;
+	stack.register(() => {
+		parentClosed = true;
+	});
+	const closePopup = stack.register(() => assert.fail('Popup already closed'));
+	const actions = createActionHistory((restore) => stack.register(restore));
+	actions.remember(() => assert.fail('Closed popup must not restore its old selection'));
+	actions.remember(() => assert.fail('Closed popup must not restore its old selection'));
+	await flush();
+	closePopup();
+	actions.clear();
+	await flush();
+	travel(-1);
+	await flush();
+	assert.equal(parentClosed, true);
+});
+
+test('restored actions are removed and cannot replay after a view is reopened', async () => {
+	const { stack, travel } = setup();
+	let restored = 0;
+	const actions = createActionHistory((restore) => stack.register(restore));
+	actions.remember(() => {
+		restored++;
+	});
+	await flush();
+	travel(-1);
+	await flush();
+	assert.equal(restored, 1);
+	actions.clear();
+	actions.remember(() => {
+		restored += 10;
+	});
+	await flush();
+	travel(-1);
+	await flush();
+	assert.equal(restored, 11);
 });

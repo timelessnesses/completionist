@@ -6,6 +6,24 @@ type BackHistory = {
 	back(): void;
 };
 
+/** Reversible navigation within a view; clear its steps when that view is closed. */
+export function createActionHistory(register: (restore: () => void) => () => void) {
+	const pending = new Set<() => void>();
+	return {
+		remember(restore: () => void) {
+			const unregister = register(() => {
+				pending.delete(unregister);
+				restore();
+			});
+			pending.add(unregister);
+		},
+		clear() {
+			for (const unregister of pending) unregister();
+			pending.clear();
+		}
+	};
+}
+
 /** One temporary history entry protects the page while views are open. */
 export function createBackStack(history: BackHistory, token: string) {
 	const views = new Map<symbol, () => void>();

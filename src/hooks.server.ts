@@ -9,6 +9,7 @@ import {
 import { and, eq, gt, isNotNull, lt } from 'drizzle-orm';
 import { getDb, notDeleted } from '$lib/server/db';
 import { user, user_identities } from '$lib/server/db/schema';
+import { JWT_EXPIRATION } from '$lib/constants';
 
 const publicRoutes = [
 	'/login',
@@ -34,6 +35,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 				event.locals.user = user;
 			}
 		} catch (error) {
+			event.cookies.set('token', '', { path: '/', expires: new Date(0) });
 			console.error('Error verifying session token:', error);
 			await reissueViaRefreshToken(event, refresh_token, db, env);
 		}
@@ -81,7 +83,7 @@ async function reissueViaRefreshToken(
 			db,
 			turnThisToUint8Array(env.JWT_SECRET_BASE64 as string)
 		);
-		event.cookies.set('token', newJWT, { path: '/', sameSite: 'strict', maxAge: 3600 });
+		event.cookies.set('token', newJWT, { path: '/', sameSite: 'strict', maxAge: JWT_EXPIRATION });
 		event.locals.user = await verifyJWT(newJWT, env);
 		console.log('New session token issued.');
 	} else {

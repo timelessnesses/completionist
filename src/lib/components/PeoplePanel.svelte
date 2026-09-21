@@ -779,7 +779,7 @@
 				</button>
 
 				{#if calendarFeedOpen}
-					<div class="calendar-feed-panel">
+					<div class="calendar-feed-panel" use:backDismiss={() => (calendarFeedOpen = false)}>
 						<p>Keep this private URL secret. Anyone who has it can read the calendar.</p>
 						{#if calendarFeedBusy}
 							<p class="calendar-feed-state">Creating your subscription URL…</p>

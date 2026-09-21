@@ -7,6 +7,7 @@
 		mdiChevronDown,
 		mdiChevronRight,
 		mdiFolderOutline,
+		mdiFileTreeOutline,
 		mdiPlayCircleOutline
 	} from '@mdi/js';
 
@@ -17,7 +18,8 @@
 		assigned = [],
 		late = [],
 		currentTime = Date.now(),
-		onSelectEvent
+		onSelectEvent,
+		onHierarchy
 	}: {
 		events: RichTask[];
 		upcoming: RichTask[];
@@ -26,6 +28,7 @@
 		late?: RichTask[];
 		currentTime?: number;
 		onSelectEvent?: (event: RichTask) => void;
+		onHierarchy?: (event?: RichTask) => void;
 	} = $props();
 
 	type ListKind = 'running' | 'late' | 'upcoming';
@@ -143,6 +146,12 @@
 		{#if entry.project}
 			{@const key = foldKey(kind, entry.project.id)}
 			<div class="project-group">
+				<button
+					class="hierarchy-button"
+					onclick={() => onHierarchy?.(entry.project)}
+					aria-label={`Hierarchy for ${entry.project.task_name}`}
+					><MdiIcon path={mdiFileTreeOutline} size={14} />Hierarchy</button
+				>
 				<div class="project-header">
 					<button
 						class="fold"
@@ -235,6 +244,20 @@
 </div>
 
 <style>
+	.hierarchy-button {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		margin: 0 0 5px auto;
+		padding: 4px 7px;
+		border: 1px solid var(--color-border);
+		border-radius: 7px;
+		background: var(--color-background);
+		color: var(--color-primary);
+		font: inherit;
+		font-size: 11px;
+		cursor: pointer;
+	}
 	.upcoming {
 		padding: 16px 16px 0;
 		display: flex;
